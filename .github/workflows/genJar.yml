@@ -36,7 +36,8 @@ jobs:
         uses: anvil-solutions/Fast-FTP-Action@2.1.3
         with:
           # Sever Hostname or IP
-          server: ftpupload.net:21
+          server: ftpupload.net
+          port: 21
           # Login Username
           username: mseet_40633048
           # Login Password
@@ -44,6 +45,6 @@ jobs:
           # Default port are FTP(21), SFTP(22).
           method:  ftp
           # Upload source directory.
-          local_dir: ${GITHUB_WORKSPACE}/jar/,${GITHUB_WORKSPACE}/json/
+          local_dir: ${{GITHUB_WORKSPACE}}/jar/,${{GITHUB_WORKSPACE}}/json/
           remote_dir: htdocs/
 
