@@ -40,7 +40,7 @@ jobs:
           # ftp username
           username: mseet_40633048
           # ftp password
-          password: DL0NzRdjf1Wv
+          password: ${{ secrets.FTP_PWD }}
           # Server port to connect to (read your web hosts docs)
           port: 21
           # protocol to deploy with - ftp, ftps, or ftps-legacy
@@ -60,7 +60,7 @@ jobs:
           # ftp server
           server: ftpupload.net
           # ftp username
-          username: mseet_40633048
+          username: ${{ secrets.FTP_PWD }}
           # ftp password
           password: DL0NzRdjf1Wv
           # Server port to connect to (read your web hosts docs)
