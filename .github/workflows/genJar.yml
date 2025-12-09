@@ -33,18 +33,17 @@ jobs:
           add: "['./jar/custom_spider.jar', './jar/custom_spider.jar.md5','./json/index.json']"
 
       - name: FTP Deploy Action via lftp (FTP, SFTP, FTPS)
-        uses: pontago/lftp-deploy-action@v1.0.1
+        uses: anvil-solutions/Fast-FTP-Action@2.1.3
         with:
           # Sever Hostname or IP
-          host: ftpupload.net
+          server: ftpupload.net:21
           # Login Username
           username: mseet_40633048
           # Login Password
           password: DL0NzRdjf1Wv
           # Default port are FTP(21), SFTP(22).
-          port:  21
+          method:  ftp
           # Upload source directory.
           local_dir: ./jar,./json
-
           remote_dir: htdocs
 
