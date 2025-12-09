@@ -10,25 +10,47 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up JDK 21
-      uses: actions/setup-java@v5
-      with:
-        java-version: '21'
-        distribution: 'jetbrains'
-        cache: gradle
-        
-    - name: Grant execute permission to gradlew
-      run: chmod +x ./gradlew
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'jetbrains'
+          cache: gradle
 
-    - name: Build with Gradle
-      run: ./gradlew app:buildCustomSpiderJar
-        
+      - name: Grant execute permission to gradlew
+        run: chmod +x ./gradlew
 
-    - name: Add & Commit
-      uses: EndBug/add-and-commit@v9.1.4
-      with:
-        default_author: github_actions
-        message: 'update spider jar and json'
-        add: "['./jar/custom_spider.jar', './jar/custom_spider.jar.md5','./json/index.json']"
+      - name: Build with Gradle
+        run: ./gradlew app:buildCustomSpiderJar
+
+
+      - name: Add & Commit
+        uses: EndBug/add-and-commit@v9.1.4
+        with:
+          default_author: github_actions
+          message: 'update spider jar and json'
+          add: "['./jar/custom_spider.jar', './jar/custom_spider.jar.md5','./json/index.json']"
+
+      - name: FTP Deploy Action via lftp (FTP, SFTP, FTPS)
+        uses: pontago/lftp-deploy-action@v1.0.1
+        with:
+          # Sever Hostname or IP
+          host: ftpupload.net
+          # Login Username
+          username: mseet_40633048
+          # Login Password
+          password: DL0NzRdjf1Wv
+          # Default port are FTP(21), SFTP(22).
+          port: # 21
+          # Transfer protocol (ftp, ftps, sftp)
+          protocol: # optional, default is ftp
+          # If you want to use SSH Private Key, protocol parameter should be sftp.
+          ssh_private_key: # optional, default is
+          # If you want to no SSL verification, false. (FTPS)
+          verify_cert: # optional, default is true
+          # Upload source directory.
+          local_dir: ./jar,./json
+
+          remote_dir: htdocs
 
