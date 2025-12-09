@@ -42,9 +42,21 @@ jobs:
             # FTP Password.
             password: DL0NzRdjf1Wv
             # Local directory.
-            local_dir: ${{ github.workspace }}/jar/,${{ github.workspace }}/json/
+            local_dir: ${{ github.workspace }}/json/
             # Remote directory.
             remote_dir: htdocs/
 
-
+      - name: FTP Deploy Action via lftp (FTP, SFTP, FTPS)
+        uses: airvzxf/ftp-deployment-action@latest
+        with:
+          # FTP Server.
+          server: ftpupload.net
+          # FTP User.
+          user: mseet_40633048
+          # FTP Password.
+          password: DL0NzRdjf1Wv
+          # Local directory.
+          local_dir: ${{ github.workspace }}/jar/
+          # Remote directory.
+          remote_dir: htdocs/
 
