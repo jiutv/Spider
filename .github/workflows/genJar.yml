@@ -33,30 +33,48 @@ jobs:
           add: "['./jar/custom_spider.jar', './jar/custom_spider.jar.md5','./json/index.json']"
 
       - name: upload json
-        uses: airvzxf/ftp-deployment-action@latest
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
-            # FTP Server.
-            server: ftpupload.net
-            # FTP User.
-            user: mseet_40633048
-            # FTP Password.
-            password: DL0NzRdjf1Wv
-            # Local directory.
-            local_dir: ${{ github.workspace }}/json/
-            # Remote directory.
-            remote_dir: htdocs/json/
+          # ftp server
+          server: ftpupload.net
+          # ftp username
+          username: mseet_40633048
+          # ftp password
+          password: DL0NzRdjf1Wv
+          # Server port to connect to (read your web hosts docs)
+          port: 21
+          # protocol to deploy with - ftp, ftps, or ftps-legacy
+          protocol: ftp
+          # Folder to upload from, must end with trailing slash /
+          local-dir: ${{ github.workspace }}/json/
+          # Path to upload to on the server. Must end with trailing slash /
+          server-dir: htdocs/json/
+          # Deletes ALL contents of server-dir, even items in excluded with exclude argument
+          dangerous-clean-slate: true
+          exclude: |
+            **/js/**
 
       - name: upload jar
-        uses: airvzxf/ftp-deployment-action@latest
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
-          # FTP Server.
+          # ftp server
           server: ftpupload.net
-          # FTP User.
-          user: mseet_40633048
-          # FTP Password.
+          # ftp username
+          username: mseet_40633048
+          # ftp password
           password: DL0NzRdjf1Wv
-          # Local directory.
-          local_dir: ${{ github.workspace }}/jar/
-          # Remote directory.
-          remote_dir: htdocs/jar/
+          # Server port to connect to (read your web hosts docs)
+          port: 21
+          # protocol to deploy with - ftp, ftps, or ftps-legacy
+          protocol: ftp
+          # Folder to upload from, must end with trailing slash /
+          local-dir: ${{ github.workspace }}/jar/
+          # Path to upload to on the server. Must end with trailing slash /
+          server-dir: htdocs/jar/
+          # Deletes ALL contents of server-dir, even items in excluded with exclude argument
+          dangerous-clean-slate: true
+
+
+
+
 
