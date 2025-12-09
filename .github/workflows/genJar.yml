@@ -33,18 +33,18 @@ jobs:
           add: "['./jar/custom_spider.jar', './jar/custom_spider.jar.md5','./json/index.json']"
 
       - name: FTP Deploy Action via lftp (FTP, SFTP, FTPS)
-        uses: anvil-solutions/Fast-FTP-Action@2.1.3
+        uses: airvzxf/ftp-deployment-action@latest
         with:
-          # Sever Hostname or IP
-          server: ftpupload.net
-          port: 21
-          # Login Username
-          username: mseet_40633048
-          # Login Password
-          password: DL0NzRdjf1Wv
-          # Default port are FTP(21), SFTP(22).
-          method:  ftp
-          # Upload source directory.
-          local_dir: $GITHUB_WORKSPACE/jar/,$GITHUB_WORKSPACE/json/
-          remote_dir: htdocs/
+            # FTP Server.
+            server: ftpupload.net
+            # FTP User.
+            user: mseet_40633048
+            # FTP Password.
+            password: DL0NzRdjf1Wv
+            # Local directory.
+            local_dir: ${{ github.workspace }}/jar/,${{ github.workspace }}/json/
+            # Remote directory.
+            remote_dir: htdocs/
+
+
 
