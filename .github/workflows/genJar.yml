@@ -45,6 +45,6 @@ jobs:
           # Default port are FTP(21), SFTP(22).
           method:  ftp
           # Upload source directory.
-          local_dir: ${{GITHUB_WORKSPACE}}/jar/,${{GITHUB_WORKSPACE}}/json/
+          local_dir: $GITHUB_WORKSPACE/jar/,$GITHUB_WORKSPACE/json/
           remote_dir: htdocs/
 
