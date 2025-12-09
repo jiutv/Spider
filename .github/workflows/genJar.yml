@@ -42,7 +42,7 @@ jobs:
             # FTP Password.
             password: DL0NzRdjf1Wv
             # Local directory.
-            local_dir: ${{ github.workspace }}/json/index.json
+            local_dir: ${{ github.workspace }}/json/
             # Remote directory.
             remote_dir: htdocs/json/
 
@@ -56,7 +56,7 @@ jobs:
           # FTP Password.
           password: DL0NzRdjf1Wv
           # Local directory.
-          local_dir: ${{ github.workspace }}/jar/custom_spider.jar
+          local_dir: ${{ github.workspace }}/jar/
           # Remote directory.
           remote_dir: htdocs/jar/
 
