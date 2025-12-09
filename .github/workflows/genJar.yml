@@ -42,13 +42,7 @@ jobs:
           # Login Password
           password: DL0NzRdjf1Wv
           # Default port are FTP(21), SFTP(22).
-          port: # 21
-          # Transfer protocol (ftp, ftps, sftp)
-          protocol: # optional, default is ftp
-          # If you want to use SSH Private Key, protocol parameter should be sftp.
-          ssh_private_key: # optional, default is
-          # If you want to no SSL verification, false. (FTPS)
-          verify_cert: # optional, default is true
+          port:  21
           # Upload source directory.
           local_dir: ./jar,./json
 
