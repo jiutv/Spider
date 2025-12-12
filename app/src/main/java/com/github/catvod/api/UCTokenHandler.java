@@ -216,7 +216,7 @@ public class UCTokenHandler {
             }
 
         } else if (okResult.getCode() == 400) {
-            SpiderDebug.log("uc Token获取失败：" +okResult.getBody());
+            SpiderDebug.log("uc Token获取失败：" + okResult.getBody());
 
             return Map.of("status", "NEW");
 
@@ -266,6 +266,11 @@ public class UCTokenHandler {
 
         OkResult okResult1 = OkHttp.get(API_URL + pathname, params, headers);
         JsonObject obj = Json.safeObject(okResult1.getBody());
+        if (okResult1.getCode() != 200) {
+            Notify.show(obj.get("error_info").getAsString());
+            SpiderDebug.log("uc TV 错误信息：" + obj.get("error_info").getAsString());
+            return null;
+        }
         String downloadUrl = obj.get("data").getAsJsonObject().get("video_info").getAsJsonArray().get(0).getAsJsonObject().get("url").getAsString();
         SpiderDebug.log("uc TV 下载文件内容：" + downloadUrl);
         return downloadUrl;
