@@ -101,7 +101,7 @@ public class Cloud extends Spider {
     }
 
     protected String detailContentVodPlayFrom(List<String> shareLinks) {
-        Collections.sort(shareLinks, Collections.reverseOrder());
+
         List<String> from = new ArrayList<>();
         int i = 0;
         for (String shareLink : shareLinks) {
