@@ -70,14 +70,15 @@ public class Quark extends Spider {
      * @param ids share_link 集合
      * @return 詳情內容視頻播放地址
      */
-    public String detailContentVodPlayUrl(List<String> ids) throws Exception {
+    public String detailContentVodPlayUrl(List<String> ids)  {
         List<String> playUrl = new ArrayList<>();
         for (String id : ids) {
             ShareData shareData = QuarkApi.get().getShareData(id);
             try {
-                playUrl.add(QuarkApi.get().getVod(shareData)==null?"":QuarkApi.get().getVod(shareData).getVodPlayUrl());
+                playUrl.add(QuarkApi.get().getVod(shareData)==null?" $$$ ":QuarkApi.get().getVod(shareData).getVodPlayUrl());
             } catch (Exception e) {
                 SpiderDebug.log("获取播放地址出错:" + e.getMessage());
+                playUrl.add("  $$$  ");
             }
         }
         return TextUtils.join("$$$", playUrl);

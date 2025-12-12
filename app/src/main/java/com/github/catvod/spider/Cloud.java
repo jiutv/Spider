@@ -8,11 +8,16 @@ import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 import com.google.gson.JsonObject;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static com.github.catvod.api.TianyiApi.URL_CONTAIN;
 
@@ -22,7 +27,7 @@ import static com.github.catvod.api.TianyiApi.URL_CONTAIN;
 public class Cloud extends Spider {
     private Quark quark = null;
     /*   private Ali ali = null;*/
-       private UC uc = null;
+    private UC uc = null;
     private TianYi tianYi = null;
     private YiDongYun yiDongYun = null;
     private BaiDuPan baiDuPan = null;
@@ -60,7 +65,7 @@ public class Cloud extends Spider {
             return quark.detailContent(shareUrl);
         } else if (shareUrl.get(0).matches(Util.patternUC)) {
             return uc.detailContent(shareUrl);
-        }  else if (shareUrl.get(0).contains(URL_CONTAIN)) {
+        } else if (shareUrl.get(0).contains(URL_CONTAIN)) {
             return tianYi.detailContent(shareUrl);
         } else if (shareUrl.get(0).contains(YiDongYun.URL_START)) {
             return yiDongYun.detailContent(shareUrl);
@@ -81,7 +86,7 @@ public class Cloud extends Spider {
             return quark.playerContent(flag, id, vipFlags);
         } else if (flag.contains("uc")) {
             return uc.playerContent(flag, id, vipFlags);
-        }  else if (flag.contains("天意")) {
+        } else if (flag.contains("天意")) {
             return tianYi.playerContent(flag, id, vipFlags);
         } else if (flag.contains("移动")) {
             return yiDongYun.playerContent(flag, id, vipFlags);
@@ -101,10 +106,9 @@ public class Cloud extends Spider {
         int i = 0;
         for (String shareLink : shareLinks) {
             i++;
-           if (shareLink.matches(Util.patternUC)) {
+            if (shareLink.matches(Util.patternUC)) {
                 from.add(uc.detailContentVodPlayFrom(List.of(shareLink), i));
-            } else
-            if (shareLink.matches(Util.patternQuark)) {
+            } else if (shareLink.matches(Util.patternQuark)) {
                 from.add(quark.detailContentVodPlayFrom(List.of(shareLink), i));
             } /*else if (shareLink.matches(Util.patternAli)) {
                 from.add(ali.detailContentVodPlayFrom(List.of(shareLink), i));
@@ -122,27 +126,44 @@ public class Cloud extends Spider {
         return TextUtils.join("$$$", from);
     }
 
-    protected String detailContentVodPlayUrl(List<String> shareLinks) throws Exception {
-        Collections.sort(shareLinks, Collections.reverseOrder());
-        List<String> urls = new ArrayList<>();
+    protected String detailContentVodPlayUrl(List<String> shareLinks) {
+
+        List<String> urls = new CopyOnWriteArrayList<>();
+        ExecutorService service = Executors.newFixedThreadPool(4);
+        List<CompletableFuture<String>> futures = new ArrayList<>();
         for (String shareLink : shareLinks) {
-            if (shareLink.matches(Util.patternUC)) {
-                urls.add(uc.detailContentVodPlayUrl(List.of(shareLink)));
-            } else
-            if (shareLink.matches(Util.patternQuark)) {
-                urls.add(quark.detailContentVodPlayUrl(List.of(shareLink)));
-            }/* else if (shareLink.matches(Util.patternAli)) {
+            futures.add(CompletableFuture.supplyAsync(() -> {
+
+                String url = "";
+                if (shareLink.matches(Util.patternUC)) {
+                    url = uc.detailContentVodPlayUrl(List.of(shareLink));
+                } else if (shareLink.matches(Util.patternQuark)) {
+                    url = quark.detailContentVodPlayUrl(List.of(shareLink));
+                }/* else if (shareLink.matches(Util.patternAli)) {
                 urls.add(ali.detailContentVodPlayUrl(List.of(shareLink)));
             } */ else if (shareLink.contains(URL_CONTAIN)) {
-                urls.add(tianYi.detailContentVodPlayUrl(List.of(shareLink)));
-            } else if (shareLink.contains(YiDongYun.URL_START)) {
-                urls.add(yiDongYun.detailContentVodPlayUrl(List.of(shareLink)));
-            } else if (shareLink.contains(BaiDuPan.URL_START)) {
-                urls.add(baiDuPan.detailContentVodPlayUrl(List.of(shareLink)));
-            } else if (shareLink.matches(Pan123Api.regex)) {
-                urls.add(pan123.detailContentVodPlayUrl(List.of(shareLink)));
-            }
+                    url = tianYi.detailContentVodPlayUrl(List.of(shareLink));
+                } else if (shareLink.contains(YiDongYun.URL_START)) {
+                    url = yiDongYun.detailContentVodPlayUrl(List.of(shareLink));
+                } else if (shareLink.contains(BaiDuPan.URL_START)) {
+                    url = baiDuPan.detailContentVodPlayUrl(List.of(shareLink));
+                } else if (shareLink.matches(Pan123Api.regex)) {
+                    url = pan123.detailContentVodPlayUrl(List.of(shareLink));
+                }
+                return url;
+            }, service));
+
         }
-        return TextUtils.join("$$$", urls);
+        try {
+            for (CompletableFuture<String> future : futures) {
+                urls.add(future.get());
+            }
+        } catch (Exception e) {
+            SpiderDebug.log("获取异步结果出错：" + e);
+        }
+
+        SpiderDebug.log("---urls：" + Json.toJson(urls));
+        service.shutdown();
+        return StringUtils.join(urls, "$$$");
     }
 }
