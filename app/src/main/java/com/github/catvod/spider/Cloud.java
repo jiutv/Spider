@@ -130,46 +130,47 @@ public class Cloud extends Spider {
 
     //同時获取from 和url ，放入缓存，只要一个函数执行就行，避免重复执行
     private void getPlayFromAndUrl(List<String> shareLinks) {
-        //首先清空缓存，避免太多缓存
-        resultMap.clear();
-        List<String> urls = new ArrayList<>();
-        List<String> froms = new ArrayList<>();
         ExecutorService service = Executors.newFixedThreadPool(4);
-        List<Future<ImmutablePair<String, String>>> futures = new ArrayList<>();
-        int i = 0;
-        for (String shareLink : shareLinks) {
+        try {  //首先清空缓存，避免太多缓存
+            resultMap.clear();
+            List<String> urls = new ArrayList<>();
+            List<String> froms = new ArrayList<>();
 
-            int finalI = ++i;
-            futures.add(service.submit(() -> {
+            List<Future<ImmutablePair<String, String>>> futures = new ArrayList<>();
+            int i = 0;
+            for (String shareLink : shareLinks) {
 
-                String url = "";
-                String from = "";
-                if (shareLink.matches(Util.patternUC)) {
-                    url = uc.detailContentVodPlayUrl(List.of(shareLink));
-                    from = uc.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                } else if (shareLink.matches(Util.patternQuark)) {
-                    url = quark.detailContentVodPlayUrl(List.of(shareLink));
-                    from = quark.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                }/* else if (shareLink.matches(Util.patternAli)) {
+                int finalI = ++i;
+                futures.add(service.submit(() -> {
+
+                    String url = "";
+                    String from = "";
+                    if (shareLink.matches(Util.patternUC)) {
+                        url = uc.detailContentVodPlayUrl(List.of(shareLink));
+                        from = uc.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    } else if (shareLink.matches(Util.patternQuark)) {
+                        url = quark.detailContentVodPlayUrl(List.of(shareLink));
+                        from = quark.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    }/* else if (shareLink.matches(Util.patternAli)) {
                 urls.add(ali.detailContentVodPlayUrl(List.of(shareLink)));
             } */ else if (shareLink.contains(URL_CONTAIN)) {
-                    url = tianYi.detailContentVodPlayUrl(List.of(shareLink));
-                    from = tianYi.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                } else if (shareLink.contains(YiDongYun.URL_START)) {
-                    url = yiDongYun.detailContentVodPlayUrl(List.of(shareLink));
-                    from = yiDongYun.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                } else if (shareLink.contains(BaiDuPan.URL_START)) {
-                    url = baiDuPan.detailContentVodPlayUrl(List.of(shareLink));
-                    from = baiDuPan.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                } else if (shareLink.matches(Pan123Api.regex)) {
-                    url = pan123.detailContentVodPlayUrl(List.of(shareLink));
-                    from = pan123.detailContentVodPlayFrom(List.of(shareLink), finalI);
-                }
-                return new ImmutablePair<String, String>(url, from);
-            }));
+                        url = tianYi.detailContentVodPlayUrl(List.of(shareLink));
+                        from = tianYi.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    } else if (shareLink.contains(YiDongYun.URL_START)) {
+                        url = yiDongYun.detailContentVodPlayUrl(List.of(shareLink));
+                        from = yiDongYun.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    } else if (shareLink.contains(BaiDuPan.URL_START)) {
+                        url = baiDuPan.detailContentVodPlayUrl(List.of(shareLink));
+                        from = baiDuPan.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    } else if (shareLink.matches(Pan123Api.regex)) {
+                        url = pan123.detailContentVodPlayUrl(List.of(shareLink));
+                        from = pan123.detailContentVodPlayFrom(List.of(shareLink), finalI);
+                    }
+                    return new ImmutablePair<>(url, from);
+                }));
 
-        }
-        try {
+            }
+
             for (Future<ImmutablePair<String, String>> future : futures) {
                 //只有连接不为空才放入进去
                 if (StringUtils.isNoneBlank(future.get().left)) {
@@ -178,13 +179,14 @@ public class Cloud extends Spider {
                 }
 
             }
+            resultMap.put(Util.MD5(Json.toJson(shareLinks)), new ImmutablePair<>(urls, froms));
+
+            SpiderDebug.log("---urls：" + Json.toJson(urls));
+            SpiderDebug.log("---froms：" + Json.toJson(froms));
         } catch (Exception e) {
             SpiderDebug.log("获取异步结果出错：" + e);
+        } finally {
+            service.shutdown();
         }
-        resultMap.put(Util.MD5(Json.toJson(shareLinks)), new ImmutablePair<List<String>, List<String>>(urls, froms));
-
-        SpiderDebug.log("---urls：" + Json.toJson(urls));
-        SpiderDebug.log("---froms：" + Json.toJson(froms));
-        service.shutdown();
     }
 }
