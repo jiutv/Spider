@@ -87,7 +87,15 @@ public class UCApi {
         cache = Cache.objectFrom(Path.read(getCache()));
         tokenCache = Cache.objectFrom(Path.read(qrCodeHandler.getCache()));
 
-        this.cookieToken = tokenCache.getUser().getCookie();
+        java.lang.String tokenCacheJson = tokenCache.getUser().getCookie();
+        if (StringUtils.isNoneBlank(tokenCacheJson)) {
+            this.cookieToken = Json.safeObject(tokenCacheJson).getAsJsonObject().get("access_token").getAsString();
+
+            //刷新token
+            qrCodeHandler.refreshToken(Json.safeObject(tokenCacheJson).getAsJsonObject().get("refresh_token").getAsString());
+
+            SpiderDebug.log("UC初始化获取到的cookieToken: " + cookieToken);
+        }
         SpiderDebug.log("UC初始化获取到的cookieToken: " + cookieToken);
     }
 
