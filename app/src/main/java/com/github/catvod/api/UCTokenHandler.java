@@ -190,8 +190,7 @@ public class UCTokenHandler {
                 SpiderDebug.log("uc Token获取成功：" + tokenResData.get("data").getAsJsonObject().get("access_token").getAsString());
 
                 //保存到本地
-                cache.setTokenUser(User.objectFrom(tokenResData.get("data").getAsJsonObject().get("access_token").getAsString()));
-
+                cache.setTokenUser(User.objectFrom(Json.toJson(tokenResData.get("data").getAsJsonObject())));
                 //停止检验线程，关闭弹窗
                 stopService();
                 return result;
