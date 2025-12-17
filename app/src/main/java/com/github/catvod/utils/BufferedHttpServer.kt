@@ -38,17 +38,18 @@ class AdvancedHttpServer(private val port: Int) {
                 val clientSocket = serverSocket.accept()
                 threadPool.execute { handleRequest(clientSocket) }
             } catch (e: IOException) {
-                e.printStackTrace();SpiderDebug.log("出错：" + e.message)
-                if (isRunning) e.printStackTrace();SpiderDebug.log("出错：" + e.message)
+                e.printStackTrace(); SpiderDebug.log("出错：" + e.message)
+                if (isRunning) e.printStackTrace(); SpiderDebug.log("出错：" + e.message)
 
             }
         }
     }
 
     private fun handleRequest(clientSocket: Socket) {
+        val reader = BufferedReader(InputStreamReader(clientSocket.inputStream, UTF_8))
+        val writer = BufferedOutputStream(clientSocket.outputStream)
         try {
-            val reader = BufferedReader(InputStreamReader(clientSocket.inputStream, UTF_8))
-            val writer = BufferedOutputStream(clientSocket.outputStream)
+
 
             // 解析请求行
             val requestLine = reader.readLine() ?: ""
@@ -65,8 +66,7 @@ class AdvancedHttpServer(private val port: Int) {
             while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
                 val colonIndex = line!!.indexOf(':')
                 if (colonIndex > 0) {
-                    headers[line!!.substring(0, colonIndex).trim()] =
-                        line!!.substring(colonIndex + 1).trim()
+                    headers[line!!.substring(0, colonIndex).trim()] = line!!.substring(colonIndex + 1).trim()
                 }
             }
 
@@ -103,8 +103,10 @@ class AdvancedHttpServer(private val port: Int) {
             response.flush()
         } catch (e: IOException) {
             e.printStackTrace()
-            SpiderDebug.log("出错：" + e.message)
+            SpiderDebug.log("AdvancedHttpServer处理请求出错：" + e.message)
         } finally {
+            reader.close()
+            writer.close()
             clientSocket.close()
         }
     }

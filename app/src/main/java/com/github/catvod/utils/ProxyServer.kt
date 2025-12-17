@@ -2,12 +2,8 @@ package com.github.catvod.utils
 
 import com.github.catvod.crawler.SpiderDebug
 import com.github.catvod.net.OkHttp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 
 
@@ -170,7 +166,9 @@ object ProxyServer {
                 response.write("proxyAsync error: ${e.message}")
 
             } finally {
-                // channels.forEach { it.close() }
+
+                channels.forEach { it.close() }
+
 
             }
         }
@@ -234,6 +232,7 @@ object ProxyServer {
 
         return false
     }
+
     private fun queryToMap(query: String?): Map<String, String>? {
         if (query == null) {
             return null
