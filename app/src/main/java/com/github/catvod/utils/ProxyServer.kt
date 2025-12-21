@@ -167,7 +167,7 @@ object ProxyServer {
 
             } finally {
 
-                channels.forEach { it.close() }
+                //channels.forEach { it.close() }
 
 
             }
