@@ -378,7 +378,7 @@ object BaiduDrive {
                 throw Exception("Failed to retrieve UID from Baidu Drive.")
             }
         } catch (e: Exception) {
-            println("获取百度网盘用户ID失败: ${e.message}")
+            SpiderDebug.log("获取百度网盘用户ID失败: ${e.message}")
             return ""
         }
     }
@@ -458,17 +458,17 @@ object BaiduDrive {
                     to = (result["extra"].asJsonObject)["list"].asJsonArray[0].asJsonObject["to"].asString
                     // videoData["to"] = to
                     if (to.isNotEmpty()) {
-                        println("成功转存文件到: $to")
+                        SpiderDebug.log("成功转存文件到: $to")
                         break
                     }
                 } catch (e: Exception) {
-                    println("解析转存响应出错: ${e.message}")
+                    SpiderDebug.log("解析转存响应出错: ${e.message}")
                     continue
                 }
             }
 
             if (to.isEmpty()) {
-                println("转存文件失败，无法获取下载链接")
+                SpiderDebug.log("转存文件失败，无法获取下载链接")
                 return ""
             }
 
@@ -493,10 +493,10 @@ object BaiduDrive {
             val responseJson = Json.safeObject(mediaInfoResponse)
             val info = responseJson["info"].asJsonObject
             val downloadUrl = info["dlink"].asString
-            println("获取到下载链接: $downloadUrl")
+            SpiderDebug.log("获取到下载链接: $downloadUrl")
             downloadUrl
         } catch (e: Exception) {
-            println("获取下载链接过程中出错: ${e.message}")
+            SpiderDebug.log("获取下载链接过程中出错: ${e.message}")
             e.printStackTrace()
             ""
         }
@@ -505,7 +505,7 @@ object BaiduDrive {
     fun getVideoUrl(videoData: JsonObject, flag: String): Map<String, Any> {
         return try {
             val bdUid = getBdUid()
-            println("获取百度网盘用户ID: $bdUid")
+            SpiderDebug.log("获取百度网盘用户ID: $bdUid")
 
             if (flag.contains("原画")) {
 
@@ -544,7 +544,7 @@ object BaiduDrive {
                 )
             }
         } catch (e: Exception) {
-            println("获取播放链接失败: ${e.message}")
+            SpiderDebug.log("获取播放链接失败: ${e.message}")
             _handleError
         }
     }
@@ -605,7 +605,7 @@ object BaiduDrive {
              pUrl ?: dlink*/
             dlink
         } catch (e: Exception) {
-            println("获取下载链接失败: ${e.message}")
+            SpiderDebug.log("获取下载链接失败: ${e.message}")
             ""
         }
     }
@@ -683,7 +683,7 @@ object BaiduDrive {
             saveDirId
 
         } catch (e: Exception) {
-            println("创建保存目录失败: ${e.message}")
+            SpiderDebug.log("创建保存目录失败: ${e.message}")
             null
         }
     }
@@ -731,10 +731,10 @@ object BaiduDrive {
 
 
 
-            println("删除文件响应: ${response.body}")
-            println("响应状态码: ${response.code}")
+            SpiderDebug.log("删除文件响应: ${response.body}")
+            SpiderDebug.log("响应状态码: ${response.code}")
         } catch (e: Exception) {
-            println("删除文件出错: ${e.message}")
+            SpiderDebug.log("删除文件出错: ${e.message}")
             e.printStackTrace()
         }
     }
