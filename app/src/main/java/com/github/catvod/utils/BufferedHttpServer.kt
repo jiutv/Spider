@@ -106,8 +106,8 @@ class AdvancedHttpServer(private val port: Int) {
             SpiderDebug.log("AdvancedHttpServer处理请求出错：" + e.message)
         } finally {
            /* reader.close()
-            writer.close()
-            clientSocket.close()*/
+            writer.close()*/
+            clientSocket.close()
         }
     }
 
