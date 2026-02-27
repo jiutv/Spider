@@ -1,5 +1,7 @@
 package com.github.catvod.utils
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.github.catvod.crawler.SpiderDebug
 import java.io.BufferedOutputStream
 import java.io.BufferedReader
@@ -45,69 +47,72 @@ class AdvancedHttpServer(private val port: Int) {
         }
     }
 
-    private fun handleRequest(clientSocket: Socket) {
-        val reader = BufferedReader(InputStreamReader(clientSocket.inputStream, UTF_8))
-        val writer = BufferedOutputStream(clientSocket.outputStream)
-        try {
+    @RequiresApi(Build.VERSION_CODES.KITKAT)
+    private fun handleRequest(socket: Socket) {
+        socket.use { clientSocket ->
 
 
-            // 解析请求行
-            val requestLine = reader.readLine() ?: ""
-            SpiderDebug.log("requestLine: $requestLine")
+            val reader = BufferedReader(InputStreamReader(clientSocket.inputStream, UTF_8))
+            val writer = BufferedOutputStream(clientSocket.outputStream)
+            try {
 
-            val (method, path, _) = parseRequestLine(requestLine)
 
-            // 解析路径和查询参数
-            val (basePath, queryParams) = parsePath(path)
+                // 解析请求行
+                val requestLine = reader.readLine() ?: ""
+                SpiderDebug.log("requestLine: $requestLine")
 
-            // 读取请求头
-            val headers = mutableMapOf<String, String>()
-            var line: String?
-            while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
-                val colonIndex = line!!.indexOf(':')
-                if (colonIndex > 0) {
-                    headers[line!!.substring(0, colonIndex).trim()] = line!!.substring(colonIndex + 1).trim()
-                }
-            }
+                val (method, path, _) = parseRequestLine(requestLine)
 
-            // 解析请求体参数
-            val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
-            val requestBody = if (contentLength > 0) {
-                buildString {
-                    repeat(contentLength) {
-                        val char = reader.read().takeIf { it != -1 }?.toChar() ?: return@buildString
-                        append(char)
+                // 解析路径和查询参数
+                val (basePath, queryParams) = parsePath(path)
+
+                // 读取请求头
+                val headers = mutableMapOf<String, String>()
+                var line: String?
+                while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
+                    val colonIndex = line!!.indexOf(':')
+                    if (colonIndex > 0) {
+                        headers[line!!.substring(0, colonIndex).trim()] =
+                            line!!.substring(colonIndex + 1).trim()
                     }
                 }
-            } else ""
 
-            val contentType = headers["Content-Type"] ?: ""
-            val bodyParams = parseRequestBody(contentType, requestBody)
+                // 解析请求体参数
+                val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
+                val requestBody = if (contentLength > 0) {
+                    buildString {
+                        repeat(contentLength) {
+                            val char =
+                                reader.read().takeIf { it != -1 }?.toChar() ?: return@buildString
+                            append(char)
+                        }
+                    }
+                } else ""
 
-            // 创建请求对象
-            val request = Request(
-                method = method,
-                path = basePath,
-                queryParams = queryParams,
-                headers = headers,
-                body = requestBody,
-                bodyParams = bodyParams
-            )
+                val contentType = headers["Content-Type"] ?: ""
+                val bodyParams = parseRequestBody(contentType, requestBody)
 
-            // 创建响应处理器
-            val response = Response(writer)
+                // 创建请求对象
+                val request = Request(
+                    method = method,
+                    path = basePath,
+                    queryParams = queryParams,
+                    headers = headers,
+                    body = requestBody,
+                    bodyParams = bodyParams
+                )
 
-            // 路由处理
-            routeRequest(request, response)
+                // 创建响应处理器
+                val response = Response(writer)
 
-            response.flush()
-        } catch (e: IOException) {
-            e.printStackTrace()
-            SpiderDebug.log("AdvancedHttpServer处理请求出错：" + e.message)
-        } finally {
-           /* reader.close()
-            writer.close()*/
-            clientSocket.close()
+                // 路由处理
+                routeRequest(request, response)
+
+                response.flush()
+            } catch (e: IOException) {
+                e.printStackTrace()
+                SpiderDebug.log("AdvancedHttpServer处理请求出错：" + e.message)
+            }
         }
     }
 
