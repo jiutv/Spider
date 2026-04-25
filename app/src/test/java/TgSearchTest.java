@@ -58,9 +58,9 @@ public class TgSearchTest {
 
     @org.junit.Test
     public void playerContent() throws Exception {
-        String content1 = spider.detailContent(Arrays.asList("https://123684.com/s/u9izjv-smUWv"));
+        String content1 = spider.detailContent(Arrays.asList("magnet:?xt\u003durn:btih:AAB3EAA2764474CC91F5C3F0FA40D1BAFA90F91D"));
 
-        String content = spider.playerContent("pan123原画", "eyJmaWxlbmFtZSI6IlRoZS5EdW1wbGluZy5RdWVlbi4yMDI1LjEwODBwLldFQi1ETC5IMjY0LkFBQy5tcDQiLCJzaGFyZUtleSI6InU5aXpqdi1zbVVXdiIsInNoYXJlUHdkIjoiIiwibmV4dCI6LTEsImZpbGVJZCI6MTg1NjgwODEsIlMzS2V5RmxhZyI6IjE4NDMwNTU4NTItMCIsIlNpemUiOjY0MDQyNTYzMTIsIkV0YWciOiIwYjNjZGIyOTYxZWM2NmQ5MjAyMTViOTRmZGY2MDZjNyJ9", new ArrayList<>());
+        String content = spider.playerContent("播放源", "magnet:?xt\\u003durn:btih:AAB3EAA2764474CC91F5C3F0FA40D1BAFA90F91D", new ArrayList<>());
         JsonObject map = Json.safeObject(content);
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         System.out.println("detailContent--" + gson.toJson(map));

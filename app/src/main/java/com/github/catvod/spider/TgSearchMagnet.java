@@ -271,10 +271,10 @@ public class TgSearchMagnet extends Spider {
         vod.setVodId(ids.get(0));
         vod.setVodPic("");
         vod.setVodYear("");
-        vod.setVodName("");
+        vod.setVodName(ids.get(0));
         vod.setVodContent("");
-        vod.setVodPlayFrom("");
-        vod.setVodPlayUrl("");
+        vod.setVodPlayFrom("磁力");
+        vod.setVodPlayUrl("播放源$" + ids.get(0));
         return Result.string(vod);
     }
 
