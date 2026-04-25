@@ -226,6 +226,22 @@
       }
     },
     {
+      "key": "TgSearchMagnet",
+      "name": "☁TgSearchMagnet┃网盘",
+      "type": 3,
+      "api": "csp_TgSearchMagnet",
+      "searchable": 1,
+      "filterable": 0,
+      "ext": {
+        "api_urls": [
+          "https://so.252035.xyz/api/search","https://s.panhunt.com/api/search","https://www.pansd.icu/api/search"
+        ],
+        "sources": [
+          "磁力"
+        ]
+      }
+    },
+    {
       "key": "KuaKeBa",
       "name": "夸克吧",
       "type": 3,
