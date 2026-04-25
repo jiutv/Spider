@@ -2,8 +2,10 @@ package com.github.catvod.spider;
 
 import android.content.Context;
 import android.text.TextUtils;
+
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
+import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.net.OkResult;
 import com.github.catvod.utils.Json;
@@ -12,9 +14,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-public class TgSearchMagnet extends Cloud {
+public class TgSearchMagnet extends Spider {
     private static final String KEY_API_URLS = "api_urls";
     private static final String KEY_DOMAIN_MAP = "siteurl";
     private static final String KEY_SOURCES = "sources";
@@ -185,7 +192,8 @@ public class TgSearchMagnet extends Cloud {
                 total = data.has("total") && !data.get("total").isJsonNull() ? data.get("total").getAsInt() : 0;
 
                 // 直接检查merged_by_type字段，无需三重判断
-                if (!data.has("merged_by_type") || !data.get("merged_by_type").isJsonObject()) continue;
+                if (!data.has("merged_by_type") || !data.get("merged_by_type").isJsonObject())
+                    continue;
 
                 JsonObject mergedByType = data.getAsJsonObject("merged_by_type");
 
@@ -255,5 +263,15 @@ public class TgSearchMagnet extends Cloud {
             }
         }
         return "";
+    }
+
+    @Override
+    public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
+        if (id.startsWith("magnet")) {
+            return Result.get().url(id).string();
+        }
+
+        return Result.get().url(id).string();
+
     }
 }
