@@ -266,6 +266,19 @@ public class TgSearchMagnet extends Spider {
     }
 
     @Override
+    public String detailContent(List<String> ids) throws Exception {
+        Vod vod = new Vod();
+        vod.setVodId(ids.get(0));
+        vod.setVodPic("");
+        vod.setVodYear("");
+        vod.setVodName("");
+        vod.setVodContent("");
+        vod.setVodPlayFrom("");
+        vod.setVodPlayUrl("");
+        return Result.string(vod);
+    }
+
+    @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         if (id.startsWith("magnet")) {
             return Result.get().url(id).string();
