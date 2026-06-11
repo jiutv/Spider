@@ -11,6 +11,7 @@ import android.os.Looper;
 
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.ProxyServer;
+import com.github.catvod.utils.ProxyServerIns;
 
 import java.lang.reflect.Field;
 import java.util.Map;
@@ -44,8 +45,8 @@ public class Init {
         get().app = ((Application) context);
         SpiderDebug.log("自定義爬蟲代碼載入成功！" + "1");
         execute(() -> {
-            ProxyServer.INSTANCE.stop();
-            ProxyServer.INSTANCE.start();
+            ProxyServerIns.INSTANCE.stop();
+            ProxyServerIns.INSTANCE.start();
         });
     }
 
