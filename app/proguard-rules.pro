@@ -52,4 +52,4 @@
 
 
 # 禁用代码混淆
--dontobfuscate
+# -dontobfuscate
