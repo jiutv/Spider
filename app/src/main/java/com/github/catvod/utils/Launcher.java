@@ -66,9 +66,8 @@ public class Launcher {
 
         // 构建命令列表
         List<String> command = new ArrayList<>();
-        command.add("/system/bin/sh");
-        command.add( "-c");
-        command.add("nohup "+binaryPath+ " &");
+       
+        command.add(binaryPath);
         Collections.addAll(command, args);
 
         ProcessBuilder pb = new ProcessBuilder(command);
