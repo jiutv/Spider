@@ -45,7 +45,7 @@ public class Launcher {
 
     private static String getServerPath(Context context) {
         // 使用 Android 的 App 私有内部存储路径 (/data/user/0/包名/files/)
-        return Path.tv() + File.separator + getServerName();
+        return context.getFilesDir().getAbsolutePath()+ File.separator + getServerName();
     }
 
     public static Process launch(Context context, String... args) throws Exception {
