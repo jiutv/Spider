@@ -121,9 +121,7 @@ public class Launcher {
                 Response result = OkHttp.newCall(downloadUrl, new HashMap<>());
                 if (result != null && result.body() != null) {
                     // 适配 Android 低版本，使用传统的流写入，或者 API 26+ 的 Files.write
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Files.write(file.toPath(), result.body().bytes());
-                    } else {
+
                         // 兼容老版本 Android
                         try (InputStream is = result.body().byteStream(); OutputStream os = new FileOutputStream(file)) {
                             byte[] buffer = new byte[4096];
@@ -132,7 +130,7 @@ public class Launcher {
                                 os.write(buffer, 0, length);
                             }
                         }
-                    }
+
                     SpiderDebug.log("下载server完成");
                 }
             } catch (IOException e) {
