@@ -43,7 +43,7 @@ public class Init {
         get().app = ((Application) context);
         SpiderDebug.log("自定義爬蟲代碼載入成功！");
         execute(() -> {
-            Launcher.startServer(context());
+            Launcher.startServer(context);
         });
     }
 
