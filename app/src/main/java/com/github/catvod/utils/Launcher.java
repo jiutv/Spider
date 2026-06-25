@@ -18,7 +18,7 @@ public class Launcher {
 
 
     private static String getServerName() {
-       
+
         return "libluserver.so";
     }
 
@@ -65,41 +65,41 @@ public class Launcher {
     private static void loadServerFiles(Context context) {
         String binaryPath = getServerPath(context);
         File file = new File(binaryPath);
-        if (!file.exists()) {
-            try {
-                SpiderDebug.log("正在下载 Android 代理二进制文件...");
-                String downloadUrl = "https://android.lushunming.qzz.io/json/server-android-arm.so";
-                String[] abis = new String[]{};
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    abis = Build.SUPPORTED_ABIS;
-                }
-                for (String abi : abis) {
-                    if (abi.contains("arm64")) {
-                        downloadUrl = "https://android.lushunming.qzz.io/json/server-android-arm64.so"; // 假设服务器有对应的包
-                        break;
-                    }
-                }
 
-                Response result = OkHttp.newCall(downloadUrl, new HashMap<>());
-                if (result != null && result.body() != null) {
-                    // 适配 Android 低版本，使用传统的流写入，或者 API 26+ 的 Files.write
-
-                    // 兼容老版本 Android
-                    try (InputStream is = result.body().byteStream(); OutputStream os = new FileOutputStream(file)) {
-                        byte[] buffer = new byte[4096];
-                        int length;
-                        while ((length = is.read(buffer)) > 0) {
-                            os.write(buffer, 0, length);
-                        }
-                    }
-
-                    SpiderDebug.log("下载server完成");
-                }
-            } catch (IOException e) {
-                SpiderDebug.log("下载代理服务失败");
-                throw new RuntimeException(e);
+        try {
+            SpiderDebug.log("正在下载 Android 代理二进制文件...");
+            String downloadUrl = "https://ghfast.top/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
+            String[] abis = new String[]{};
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                abis = Build.SUPPORTED_ABIS;
             }
+            for (String abi : abis) {
+                if (abi.contains("arm64")) {
+                    downloadUrl = "https://ghfast.top/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
+                    break;
+                }
+            }
+
+            Response result = OkHttp.newCall(downloadUrl, new HashMap<>());
+            if (result != null && result.body() != null) {
+                // 适配 Android 低版本，使用传统的流写入，或者 API 26+ 的 Files.write
+
+                // 兼容老版本 Android
+                try (InputStream is = result.body().byteStream(); OutputStream os = new FileOutputStream(file)) {
+                    byte[] buffer = new byte[4096];
+                    int length;
+                    while ((length = is.read(buffer)) > 0) {
+                        os.write(buffer, 0, length);
+                    }
+                }
+
+                SpiderDebug.log("下载server完成");
+            }
+        } catch (IOException e) {
+            SpiderDebug.log("下载代理服务失败");
+            throw new RuntimeException(e);
         }
+
     }
 
     static void adjustPort() {
