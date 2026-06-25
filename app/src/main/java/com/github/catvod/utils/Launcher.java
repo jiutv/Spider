@@ -65,7 +65,9 @@ public class Launcher {
     private static void loadServerFiles(Context context) {
         String binaryPath = getServerPath(context);
         File file = new File(binaryPath);
-
+        if (file.exists()) {
+            file.deleteOnExit();
+        }
         try {
             SpiderDebug.log("正在下载 Android 代理二进制文件...");
             String downloadUrl = "https://ghfast.top/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
