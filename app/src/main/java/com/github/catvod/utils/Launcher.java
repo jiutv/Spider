@@ -28,13 +28,19 @@ public class Launcher {
     }
 
 
-    @SuppressLint("UnsafeDynamicallyLoadedCode")
+
     public static void launch(Context context) {
-        File soFile = new File(getServerPath(context));
+        try {
+            File soFile = new File(getServerPath(context));
 
-        System.load(soFile.getAbsolutePath()); // 全路径加载
+            System.load(soFile.getAbsolutePath()); // 全路径加载
 
-        LuProxyNative.startServer();
+            LuProxyNative.StartServer();
+        } catch (Exception e) {
+            SpiderDebug.log("启动代理服务失败: " + e.getMessage());
+            throw new RuntimeException(e);
+        }
+
 
     }
 
