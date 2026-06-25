@@ -3,7 +3,7 @@ package com.github.catvod.utils;
 import com.github.catvod.crawler.SpiderDebug;
 
 public class LuProxyNative {
-   /* static {
+    /*static {
         try {
             System.loadLibrary("luserver"); // 无需 lib 前缀
         } catch (UnsatisfiedLinkError e) {
@@ -12,6 +12,6 @@ public class LuProxyNative {
     }*/
 
     // 对应 Go 的 StartServer()
-    public static native void StartServer();
+    public  native void StartServer();
 }
 

@@ -35,7 +35,7 @@ public class Launcher {
 
             System.load(soFile.getAbsolutePath()); // 全路径加载
 
-            LuProxyNative.StartServer();
+            new LuProxyNative().StartServer();
         } catch (Exception e) {
             SpiderDebug.log("启动代理服务失败: " + e.getMessage());
             throw new RuntimeException(e);
