@@ -790,7 +790,7 @@ object BaiduDrive {
     fun playerContent(json: JsonObject, flag: String): String {
         val play = getVideoUrl(json, flag);
         val header = play["header"] as Map<String, String>
-        return Result.get().url(ProxyServer.buildProxyUrl(play["url"] as String, header)).octet().header(header)
+        return Result.get().url( Launcher.buildProxyUrl(play["url"] as String, header)).octet().header(header)
             .string();
     }
 

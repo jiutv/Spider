@@ -396,7 +396,7 @@ object Pan123Api {
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
         )
 
-        return Result.get().url(ProxyServer.buildProxyUrl(url, header)).octet().header(header).string();
+        return Result.get().url( Launcher.buildProxyUrl(url, header)).octet().header(header).string();
 
 
     }

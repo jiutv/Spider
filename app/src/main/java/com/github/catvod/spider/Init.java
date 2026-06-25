@@ -44,7 +44,8 @@ public class Init {
         get().app = ((Application) context);
         SpiderDebug.log("自定義爬蟲代碼載入成功！");
         execute(() -> {
-            ProxyServer.INSTANCE.start();
+          //  ProxyServer.INSTANCE.start();
+            Launcher.startServer(context);
         });
     }
 
