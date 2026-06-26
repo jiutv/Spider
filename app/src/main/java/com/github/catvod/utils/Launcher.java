@@ -15,6 +15,7 @@ import java.util.Map;
 
 public class Launcher {
 
+    public static final String Server_URL = "http://android.lushunming.qzz.io/json";
     private static int port = -1;
 
 
@@ -71,6 +72,7 @@ public class Launcher {
 
 
         SpiderDebug.log("服务已启动");
+        Notify.show("启动代理服务成功");
         // 3. 检测服务端口
         adjustPort();
     }
@@ -81,14 +83,14 @@ public class Launcher {
         if (!file.exists()) {
             try {
                 SpiderDebug.log("正在下载 Android 代理二进制文件...");
-                String downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
+                String downloadUrl = Server_URL + "/server-android-arm.so";
                 String[] abis = new String[]{};
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     abis = Build.SUPPORTED_ABIS;
                 }
                 for (String abi : abis) {
                     if (abi.contains("arm64")) {
-                        downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
+                        downloadUrl = Server_URL + "/server-android-arm64.so"; // 假设服务器有对应的包
                         break;
                     }
                 }
@@ -123,6 +125,7 @@ public class Launcher {
                 String resp = OkHttp.string("http://127.0.0.1:" + pt, null);
                 if (resp != null && resp.equals("ser200")) {
                     SpiderDebug.log("Found local server port " + pt);
+                    Notify.show("发现服务端口：" + pt);
                     port = pt;
                     break;
                 }
