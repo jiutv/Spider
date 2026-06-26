@@ -76,14 +76,14 @@ public class Launcher {
         }
         try {
             SpiderDebug.log("正在下载 Android 代理二进制文件...");
-            String downloadUrl = "https://ghfast.top/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
+            String downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
             String[] abis = new String[]{};
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 abis = Build.SUPPORTED_ABIS;
             }
             for (String abi : abis) {
                 if (abi.contains("arm64")) {
-                    downloadUrl = "https://ghfast.top/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
+                    downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
                     break;
                 }
             }
