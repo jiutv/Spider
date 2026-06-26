@@ -25,7 +25,7 @@ public class Launcher {
         return "libluserver.so";
     }
 
-    private static String getServerPath(Context context) {
+    public static String getServerPath(Context context) {
         // 使用 Android 的 App 私有内部存储路径 (/data/user/0/包名/files/)
         return context.getFilesDir().getAbsolutePath() + File.separator + getServerName();
     }
@@ -46,7 +46,7 @@ public class Launcher {
                 sLibLoaded = true;
             }
             if (sServer == null) {
-                sServer = new LuProxyNative(soFile.getAbsolutePath());
+                sServer = new LuProxyNative();
                 sServer.StartServer();
             }
         } catch (Exception e) {
