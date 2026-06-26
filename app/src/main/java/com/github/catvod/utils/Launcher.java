@@ -42,11 +42,11 @@ public class Launcher {
         try {
             File soFile = new File(getServerPath(context));
             if (!sLibLoaded) {
-                System.load(soFile.getAbsolutePath()); // 全路径加载
+
                 sLibLoaded = true;
             }
             if (sServer == null) {
-                sServer = new LuProxyNative();
+                sServer = new LuProxyNative(soFile.getAbsolutePath());
                 sServer.StartServer();
             }
         } catch (Exception e) {
