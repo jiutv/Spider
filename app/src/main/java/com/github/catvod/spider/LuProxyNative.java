@@ -1,6 +1,4 @@
-package com.github.catvod.utils;
-
-import com.github.catvod.crawler.SpiderDebug;
+package com.github.catvod.spider;
 
 public class LuProxyNative {
     /*static {

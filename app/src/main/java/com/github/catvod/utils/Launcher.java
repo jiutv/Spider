@@ -1,10 +1,10 @@
 package com.github.catvod.utils;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Build;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.spider.LuProxyNative;
 import okhttp3.Response;
 
 import java.io.*;
