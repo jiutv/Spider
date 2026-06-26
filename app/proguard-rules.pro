@@ -48,6 +48,10 @@
 # This is generated automatically by the Android Gradle plugin.
 -dontwarn org.bouncycastle.jce.provider.BouncyCastleProvider
 
+-keep class com.github.catvod.utils.LuProxyNative {
+
+    native <methods>;
+}
 
 
 -keepattributes SourceFile,LineNumberTable
