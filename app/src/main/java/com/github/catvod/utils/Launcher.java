@@ -17,7 +17,8 @@ public class Launcher {
 
     public static final String Server_URL = "http://android.lushunming.qzz.io/json";
     private static int port = -1;
-
+    private static boolean sLibLoaded = false;
+    private static LuProxyNative sServer;
 
     private static String getServerName() {
 
@@ -40,10 +41,14 @@ public class Launcher {
     public static void launch(Context context) {
         try {
             File soFile = new File(getServerPath(context));
-
-            System.load(soFile.getAbsolutePath()); // 全路径加载
-
-            new LuProxyNative().StartServer();
+            if (!sLibLoaded) {
+                System.load(soFile.getAbsolutePath()); // 全路径加载
+                sLibLoaded = true;
+            }
+            if (sServer == null) {
+                sServer = new LuProxyNative();
+                sServer.StartServer();
+            }
         } catch (Exception e) {
             SpiderDebug.log("启动代理服务失败: " + e.getMessage());
             throw new RuntimeException(e);
