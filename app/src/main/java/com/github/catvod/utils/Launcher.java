@@ -9,6 +9,7 @@ import com.github.catvod.spider.LuProxyNative;
 import okhttp3.Response;
 
 import java.io.*;
+import java.nio.channels.FileLock;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,13 +20,14 @@ public class Launcher {
     private static int port = -1;
     private static boolean sLibLoaded = false;
     private static LuProxyNative sServer;
+    private static final String LOCK_FILE = "server.lock";
 
     private static String getServerName() {
 
         return "libluserver.so";
     }
 
-    public static String getServerPath(Context context) {
+    private static String getServerPath(Context context) {
         // 使用 Android 的 App 私有内部存储路径 (/data/user/0/包名/files/)
         return context.getFilesDir().getAbsolutePath() + File.separator + getServerName();
     }
@@ -42,7 +44,7 @@ public class Launcher {
         try {
             File soFile = new File(getServerPath(context));
             if (!sLibLoaded) {
-
+                System.load(soFile.getAbsolutePath()); // 全路径加载
                 sLibLoaded = true;
             }
             if (sServer == null) {
@@ -61,25 +63,42 @@ public class Launcher {
      * 启动服务（注意：Android 端必须在子线程/异步任务中调用此方法！）
      */
     public static void startServer(Context context) {
-        // 1. 检测本地文件是否存在，没有就下载文件
-        loadServerFiles(context);
 
-        // 2. 检测服务是否启动，没有启动就启动服务
-
-        SpiderDebug.log("服务未启动,正在启动代理服务...");
+        RandomAccessFile raf = null;
+        FileLock lock = null;
         try {
-            launch(context);
-            // 关键修正：给底层服务 500ms 的启动初始化时间，避免立即扫描端口导致失败
-            Thread.sleep(5000);
+            File lockFile = new File(context.getFilesDir(), LOCK_FILE);
+            raf = new RandomAccessFile(lockFile, "rw");
+            // tryLock() 是非阻塞的，如果没有获取到锁会返回 null
+            lock = raf.getChannel().tryLock();
+
+            if (lock == null) {
+                // 锁已被其他进程/ClassLoader持有，说明已经启动
+                SpiderDebug.log("服务已在其他ClassLoader中启动，跳过");
+                return;
+            }
+            // 1. 检测本地文件是否存在，没有就下载文件
+            loadServerFiles(context);
+
+            // 2. 检测服务是否启动，没有启动就启动服务
+
+            SpiderDebug.log("服务未启动,正在启动代理服务...");
+            try {
+                launch(context);
+                // 关键修正：给底层服务 500ms 的启动初始化时间，避免立即扫描端口导致失败
+                Thread.sleep(5000);
+            } catch (Exception e) {
+                SpiderDebug.log("启动代理服务失败: " + e.getMessage());
+            }
+
+
+            SpiderDebug.log("服务已启动");
+            Notify.show("启动代理服务成功");
+            // 3. 检测服务端口
+            adjustPort();
         } catch (Exception e) {
-            SpiderDebug.log("启动代理服务失败: " + e.getMessage());
+            SpiderDebug.log("启动失败: " + e);
         }
-
-
-        SpiderDebug.log("服务已启动");
-        Notify.show("启动代理服务成功");
-        // 3. 检测服务端口
-        adjustPort();
     }
 
     private static void loadServerFiles(Context context) {
