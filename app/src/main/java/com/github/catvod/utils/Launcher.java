@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Build;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.spider.Init;
 import com.github.catvod.spider.LuProxyNative;
 import okhttp3.Response;
 
@@ -27,6 +28,12 @@ public class Launcher {
         return context.getFilesDir().getAbsolutePath() + File.separator + getServerName();
     }
 
+    public static void deleteServerFiles() {
+        File soFile = new File(getServerPath(Init.context()));
+        if (soFile.exists()) {
+            soFile.delete();
+        }
+    }
 
 
     public static void launch(Context context) {
@@ -57,7 +64,7 @@ public class Launcher {
         try {
             launch(context);
             // 关键修正：给底层服务 500ms 的启动初始化时间，避免立即扫描端口导致失败
-            Thread.sleep(500);
+            Thread.sleep(5000);
         } catch (Exception e) {
             SpiderDebug.log("启动代理服务失败: " + e.getMessage());
         }
@@ -71,43 +78,41 @@ public class Launcher {
     private static void loadServerFiles(Context context) {
         String binaryPath = getServerPath(context);
         File file = new File(binaryPath);
-        if (file.exists()) {
-            file.deleteOnExit();
-        }
-        try {
-            SpiderDebug.log("正在下载 Android 代理二进制文件...");
-            String downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
-            String[] abis = new String[]{};
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                abis = Build.SUPPORTED_ABIS;
-            }
-            for (String abi : abis) {
-                if (abi.contains("arm64")) {
-                    downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
-                    break;
+        if (!file.exists()) {
+            try {
+                SpiderDebug.log("正在下载 Android 代理二进制文件...");
+                String downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm.so";
+                String[] abis = new String[]{};
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    abis = Build.SUPPORTED_ABIS;
                 }
-            }
-
-            Response result = OkHttp.newCall(downloadUrl, new HashMap<>());
-            if (result != null && result.body() != null) {
-                // 适配 Android 低版本，使用传统的流写入，或者 API 26+ 的 Files.write
-
-                // 兼容老版本 Android
-                try (InputStream is = result.body().byteStream(); OutputStream os = new FileOutputStream(file)) {
-                    byte[] buffer = new byte[4096];
-                    int length;
-                    while ((length = is.read(buffer)) > 0) {
-                        os.write(buffer, 0, length);
+                for (String abi : abis) {
+                    if (abi.contains("arm64")) {
+                        downloadUrl = "https://ghproxy.net/https://raw.githubusercontent.com/lushunming/AndroidCatVodSpider/JNI/json/server-android-arm64.so"; // 假设服务器有对应的包
+                        break;
                     }
                 }
 
-                SpiderDebug.log("下载server完成");
-            }
-        } catch (IOException e) {
-            SpiderDebug.log("下载代理服务失败");
-            throw new RuntimeException(e);
-        }
+                Response result = OkHttp.newCall(downloadUrl, new HashMap<>());
+                if (result != null && result.body() != null) {
+                    // 适配 Android 低版本，使用传统的流写入，或者 API 26+ 的 Files.write
 
+                    // 兼容老版本 Android
+                    try (InputStream is = result.body().byteStream(); OutputStream os = new FileOutputStream(file)) {
+                        byte[] buffer = new byte[4096];
+                        int length;
+                        while ((length = is.read(buffer)) > 0) {
+                            os.write(buffer, 0, length);
+                        }
+                    }
+
+                    SpiderDebug.log("下载server完成");
+                }
+            } catch (IOException e) {
+                SpiderDebug.log("下载代理服务失败");
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     static void adjustPort() {

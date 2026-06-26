@@ -8,6 +8,7 @@ import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
+import com.github.catvod.utils.Launcher;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ public class Introduce extends Spider {
         List<Class> classes = new ArrayList<>();
         classes.add(new Class("1", "UC"));
         classes.add(new Class("2", "天意"));
+        classes.add(new Class("3", "代理server"));
         List<Vod> list = new ArrayList<>();
         String pic = "https://androidcatvodspider.netlify.app/wechat.png";
         String name = "关注公众号";
@@ -59,6 +61,12 @@ public class Introduce extends Spider {
             String name1 = "清除cookie";
             vodList.add(new Vod("clean天翼cookie", name1, pic1));
         }
+        if (tid.equals("3")) {
+
+            String pic1 = "https://androidcatvodspider.netlify.app/wechat.png";
+            String name1 = "删除代理服务文件";
+            vodList.add(new Vod("删除代理服务文件", name1, pic1));
+        }
         return Result.get().vod(vodList).page().string();
     }
 
@@ -79,6 +87,10 @@ public class Introduce extends Spider {
         if (vodId.equals("clean天翼cookie")) {
             TianYiHandler qrCodeHandler = TianYiHandler.get();
             qrCodeHandler.cleanCookie();
+        }
+
+        if (vodId.equals("删除代理服务文件")) {
+            Launcher.deleteServerFiles();
         }
         Vod item = new Vod();
         item.setVodId(vodId);
