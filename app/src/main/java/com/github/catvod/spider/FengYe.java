@@ -133,15 +133,15 @@ public class FengYe extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             String url;
-            // 腾讯/优酷/B站标签分类，页面路径 /label/xxx.html
+            // 【修复】腾讯/优酷/B站标签分类，拼接页码 /label/qq-pg.html
             if ("qq".equals(tid) || "yk".equals(tid) || "bli".equals(tid)) {
-                url = siteUrl + "/label/" + tid + ".html";
+                url = siteUrl + "/label/" + tid + "-" + pg + ".html";
             }
             // 国产剧/日韩剧等cupfox长ID分页
             else if (tid.startsWith("cupfox-list/")) {
                 url = siteUrl + "/" + tid + "-" + pg + ".html";
             }
-            // 电影/电视剧/动漫/综艺/短剧 常规分类
+            // 电影/电视剧/动漫/综艺/短剧 常规type分类
             else {
                 url = siteUrl + "/" + tid + "-" + pg + ".html";
             }
