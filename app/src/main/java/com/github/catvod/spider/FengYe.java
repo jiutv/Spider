@@ -5,7 +5,8 @@ import android.text.TextUtils;
 
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
-import com.github.catvod.utils.okhttp.OkHttpUtil;
+// 修复此行：删除多余 github 层级
+import com.catvod.utils.okhttp.OkHttpUtil;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -324,7 +325,7 @@ public class FengYe extends Spider {
         try {
             if (quick) return "";
 
-            String url = siteUrl + "/cupfox-search/-------------.html?wd=" + URLEncoder.encode(key) + "&submit=";
+            String url = siteUrl + "/cupfox-search/-------------.html?wd=" + URLEncoder.encode(key, "UTF-8") + "&submit=";
             Document doc = Jsoup.parse(OkHttpUtil.string(url, getHeaders(url)));
 
             JSONObject result = new JSONObject();
