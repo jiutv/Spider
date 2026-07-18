@@ -1,3 +1,4 @@
+
 package com.github.catvod.spider;
 
 import android.content.Context;
@@ -35,7 +36,8 @@ public class FengYe extends Spider {
     private Pattern regexCategory = Pattern.compile("/(\\w+)-\\d+\\.html");
     private Pattern regexVid = Pattern.compile("/chabeihu/(\\d+)\\.html");
     private Pattern regexPlay = Pattern.compile("\\S+/play/(\\w+)-(\\d+)-(\\d+)\\.html");
-    private Pattern regexPage = Pattern.compile("/(cupfox-list/\\S+)-\\d+\\.html");
+    // 【修复】适配 cupfox-list/xxxx数字---.html 分页格式
+    private Pattern regexPage = Pattern.compile("/(cupfox-list/\\S+)(\\d+)---\\.html");
 
     @Override
     public void init(Context context) throws Exception {
@@ -133,13 +135,13 @@ public class FengYe extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             String url;
-            // 【修复】腾讯/优酷/B站标签分类，拼接页码 /label/qq-pg.html
+            // 腾讯/优酷/B站标签分类，拼接页码 /label/qq-pg.html
             if ("qq".equals(tid) || "yk".equals(tid) || "bli".equals(tid)) {
                 url = siteUrl + "/label/" + tid + "-" + pg + ".html";
             }
-            // 国产剧/日韩剧等cupfox长ID分页
+            // 【核心修复】国产剧/日韩剧/海外剧 cupfox 分页路径
             else if (tid.startsWith("cupfox-list/")) {
-                url = siteUrl + "/" + tid + "-" + pg + ".html";
+                url = siteUrl + "/" + tid + pg + "---.html";
             }
             // 电影/电视剧/动漫/综艺/短剧 常规type分类
             else {
@@ -212,7 +214,6 @@ public class FengYe extends Spider {
     public String detailContent(List<String> ids) {
         try {
             String vodId = ids.get(0);
-            // 修复详情页路径：原只传数字，拼接完整 /chabeihu/数字.html
             String url = siteUrl + "/chabeihu/" + vodId + ".html";
             Document doc = Jsoup.parse(OkHttp.string(url, getHeaders(url)));
 
