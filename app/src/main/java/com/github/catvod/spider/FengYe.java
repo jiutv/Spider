@@ -5,8 +5,7 @@ import android.text.TextUtils;
 
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
-// 修复此行：删除多余 github 层级
-import com.catvod.utils.okhttp.OkHttpUtil;
+import com.github.catvod.net.OkHttp;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -64,7 +63,7 @@ public class FengYe extends Spider {
     @Override
     public String homeContent(boolean filter) {
         try {
-            Document doc = Jsoup.parse(OkHttpUtil.string(siteUrl, getHeaders(siteUrl)));
+            Document doc = Jsoup.parse(OkHttp.string(siteUrl, getHeaders(siteUrl)));
 
             JSONArray classes = new JSONArray();
 
@@ -135,7 +134,7 @@ public class FengYe extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             String url = siteUrl + "/" + tid + "-" + pg + ".html";
-            String html = OkHttpUtil.string(url, getHeaders(url));
+            String html = OkHttp.string(url, getHeaders(url));
             Document doc = Jsoup.parse(html);
 
             JSONObject result = new JSONObject();
@@ -203,7 +202,7 @@ public class FengYe extends Spider {
         try {
             String vodId = ids.get(0);
             String url = siteUrl + vodId + ".html";
-            Document doc = Jsoup.parse(OkHttpUtil.string(url, getHeaders(url)));
+            Document doc = Jsoup.parse(OkHttp.string(url, getHeaders(url)));
 
             JSONObject result = new JSONObject();
             JSONObject vodList = new JSONObject();
@@ -289,7 +288,7 @@ public class FengYe extends Spider {
     public String playerContent(String flag, String id, List<String> vipFlags) {
         try {
             String url = siteUrl + "/play/" + id + ".html";
-            Document doc = Jsoup.parse(OkHttpUtil.string(url, getHeaders(url)));
+            Document doc = Jsoup.parse(OkHttp.string(url, getHeaders(url)));
 
             JSONObject result = new JSONObject();
             Elements allScript = doc.select("script");
@@ -325,8 +324,8 @@ public class FengYe extends Spider {
         try {
             if (quick) return "";
 
-            String url = siteUrl + "/cupfox-search/-------------.html?wd=" + URLEncoder.encode(key, "UTF-8") + "&submit=";
-            Document doc = Jsoup.parse(OkHttpUtil.string(url, getHeaders(url)));
+            String url = siteUrl + "/cupfox-search/-------------.html?wd=" + URLEncoder.encode(key) + "&submit=";
+            Document doc = Jsoup.parse(OkHttp.string(url, getHeaders(url)));
 
             JSONObject result = new JSONObject();
             JSONArray videos = new JSONArray();
