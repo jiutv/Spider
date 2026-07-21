@@ -11,8 +11,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -80,7 +78,7 @@ public class FengYe extends Spider {
 
     // 首页分类、筛选
     @Override
-    public String homeContent(boolean filter) {
+    public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
         classes.put(new JSONObject().put("type_id", "1").put("type_name", "电影"));
         classes.put(new JSONObject().put("type_id", "2").put("type_name", "电视剧"));
@@ -120,7 +118,7 @@ public class FengYe extends Spider {
     }
 
     // 构造筛选JSON
-    private JSONArray makeFilter(String[] cls, String[] area, JSONArray years, JSONArray orders) {
+    private JSONArray makeFilter(String[] cls, String[] area, JSONArray years, JSONArray orders) throws Exception {
         JSONArray arr = new JSONArray();
         JSONArray clsVal = new JSONArray();
         clsVal.put(new JSONObject().put("n", "全部").put("v", ""));
@@ -137,7 +135,7 @@ public class FengYe extends Spider {
     }
 
     @Override
-    public String homeVideoContent() {
+    public String homeVideoContent() throws Exception {
         JSONObject obj = new JSONObject();
         obj.put("list", new JSONArray());
         return obj.toString();
@@ -145,7 +143,7 @@ public class FengYe extends Spider {
 
     // 分类分页列表
     @Override
-    public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) {
+    public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
         int page = Integer.parseInt(pg);
         String area = ext.getOrDefault("area", "");
         String by = ext.getOrDefault("by", "");
@@ -205,7 +203,7 @@ public class FengYe extends Spider {
 
     // 影片详情
     @Override
-    public String detailContent(List<String> ids) {
+    public String detailContent(List<String> ids) throws Exception {
         String did = ids.get(0);
         String url = host + "/chabeihu/" + did + ".html";
         String name = "", state = "", actor = "", director = "", year = "", content = "";
@@ -278,7 +276,7 @@ public class FengYe extends Spider {
 
     // 播放解析
     @Override
-    public String playerContent(String flag, String id, List<String> vipFlags) {
+    public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         JSONObject ret = new JSONObject();
         ret.put("parse", 1);
         ret.put("url", id);
@@ -454,12 +452,12 @@ public class FengYe extends Spider {
 
     // 搜索
     @Override
-    public String searchContent(String key, boolean quick) {
+    public String searchContent(String key, boolean quick) throws Exception {
         return searchContent(key, quick, "1");
     }
 
     @Override
-    public String searchContent(String key, boolean quick, String pg) {
+    public String searchContent(String key, boolean quick, String pg) throws Exception {
         JSONArray list = new JSONArray();
         int page = Integer.parseInt(pg);
         try {
