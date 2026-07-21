@@ -412,13 +412,15 @@ public class FengYe extends Spider {
         }
     }
 
-    // 解密1：JDK原生Base64，无自定义工具
+    // 解密1：【已修复】异或byte/char类型不匹配编译报错
     private String jsDecrypt1(String data) throws Exception {
         String key = md5("test");
         byte[] decodeBytes = Base64.getDecoder().decode(data);
         byte[] xor = new byte[decodeBytes.length];
         for (int i = 0; i < decodeBytes.length; i++) {
-            xor[i] = (byte) (decodeBytes[i] ^ key.charAt(i % key.length));
+            // 单独转换char为byte，统一运算类型，消除编译报错
+            byte keyByte = (byte) key.charAt(i % key.length());
+            xor[i] = (byte) (decodeBytes[i] ^ keyByte);
         }
         byte[] secondDecode = Base64.getDecoder().decode(new String(xor));
         return new String(secondDecode, StandardCharsets.UTF_8);
