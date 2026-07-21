@@ -46,6 +46,11 @@ public class FengYe extends Spider {
                 .build();
     }
 
+    // 生成分类JSONObject，适配截图简洁写法
+    private JSONObject getClassMap(String cid, String name) throws Exception {
+        return new JSONObject().put("type_id", cid).put("type_name", name);
+    }
+
     // GET请求封装
     private String get(String url) throws IOException {
         Request request = new Request.Builder()
@@ -78,15 +83,20 @@ public class FengYe extends Spider {
         }
     }
 
-    // 首页分类、筛选【修复筛选数组传参错误】
+    // 首页分类、筛选【新增腾讯/优酷/B站专区导航】
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
-        classes.put(new JSONObject().put("type_id", "1").put("type_name", "电影"));
-        classes.put(new JSONObject().put("type_id", "2").put("type_name", "电视剧"));
-        classes.put(new JSONObject().put("type_id", "4").put("type_name", "动漫"));
-        classes.put(new JSONObject().put("type_id", "3").put("type_name", "综艺"));
-        classes.put(new JSONObject().put("type_id", "5").put("type_name", "热门短剧"));
+        // 置顶三大视频平台专区
+        classes.put(getClassMap("qq", "腾讯VIP精选"));
+        classes.put(getClassMap("yk", "优酷VIP精选"));
+        classes.put(getClassMap("bli", "B站VIP精选"));
+        // 原有基础分类
+        classes.put(getClassMap("1", "电影"));
+        classes.put(getClassMap("2", "电视剧"));
+        classes.put(getClassMap("4", "动漫"));
+        classes.put(getClassMap("3", "综艺"));
+        classes.put(getClassMap("5", "短剧"));
 
         JSONObject filterDict = new JSONObject();
         JSONArray years = new JSONArray();
@@ -107,7 +117,11 @@ public class FengYe extends Spider {
         String[] shortClass = {"女频", "男频", "复仇", "甜宠", "穿越", "逆袭", "战神", "脑洞"};
         String[] shortArea = {"内地", "其他"};
 
-        // 修复：动漫分类使用动漫地区数组，原代码错误复用tvArea
+        // 三大专区复用对应筛选模板
+        filterDict.put("qq", makeFilter(movieClass, movieArea, years, orders));
+        filterDict.put("yk", makeFilter(movieClass, movieArea, years, orders));
+        filterDict.put("bli", makeFilter(comicClass, movieArea, years, orders));
+        // 原有基础分类筛选
         filterDict.put("1", makeFilter(movieClass, movieArea, years, orders));
         filterDict.put("2", makeFilter(tvClass, tvArea, years, orders));
         filterDict.put("4", makeFilter(comicClass, movieArea, years, orders));
@@ -179,9 +193,51 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 分类分页列表
+    // 分类分页列表【新增拦截qq/yk/bli专区抓取逻辑】
     @Override
     public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
+        // 拦截三大平台专区，单独抓取首页对应区块影片
+        if ("qq".equals(cid) || "yk".equals(cid) || "bli".equals(cid)) {
+            String html = get(host + "/");
+            Document doc = Jsoup.parse(html);
+            JSONArray list = new JSONArray();
+            String blockText;
+            if ("qq".equals(cid)) blockText = "腾讯VIP";
+            else if ("yk".equals(cid)) blockText = "优酷VIP";
+            else blockText = "B站VIP";
+
+            Element targetBlock = doc.selectFirst(".tv4:contains(" + blockText + ")");
+            if (targetBlock != null) {
+                Elements items = targetBlock.select(".public-list-box");
+                for (Element item : items) {
+                    Element link = item.selectFirst(".public-list-exp");
+                    if (link == null) continue;
+                    String href = link.attr("href");
+                    Matcher m = vidPat.matcher(href);
+                    if (!m.find()) continue;
+                    String vid = m.group(1);
+                    String name = link.attr("title").trim();
+                    Element img = link.selectFirst("img");
+                    String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
+                    String remark = item.selectFirst(".public-list-prb") != null ? item.selectFirst(".public-list-prb").text().trim() : "";
+                    JSONObject data = new JSONObject();
+                    data.put("vod_id", vid);
+                    data.put("vod_name", name);
+                    data.put("vod_pic", pic);
+                    data.put("vod_remarks", remark);
+                    list.put(data);
+                }
+            }
+            JSONObject ret = new JSONObject();
+            ret.put("list", list);
+            ret.put("page", 1);
+            ret.put("pagecount", 1);
+            ret.put("limit", 99);
+            ret.put("total", list.length());
+            return ret.toString();
+        }
+
+        // 原有普通数字分类分页逻辑不变
         int page = Integer.parseInt(pg);
         String area = ext.getOrDefault("area", "");
         String by = ext.getOrDefault("by", "");
