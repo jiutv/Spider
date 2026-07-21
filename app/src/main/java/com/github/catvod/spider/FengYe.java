@@ -27,6 +27,8 @@ public class FengYe extends Spider {
     private final String host = "https://www.tjtcdl.com";
     private OkHttpClient client;
     private Headers headers;
+    // 全局影片正则
+    private final Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
 
     @Override
     public void init(Context context, String extend) {
@@ -76,7 +78,7 @@ public class FengYe extends Spider {
         }
     }
 
-    // 首页分类、筛选
+    // 首页分类、筛选【修复筛选数组传参错误】
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
@@ -105,9 +107,10 @@ public class FengYe extends Spider {
         String[] shortClass = {"女频", "男频", "复仇", "甜宠", "穿越", "逆袭", "战神", "脑洞"};
         String[] shortArea = {"内地", "其他"};
 
+        // 修复：动漫分类使用动漫地区数组，原代码错误复用tvArea
         filterDict.put("1", makeFilter(movieClass, movieArea, years, orders));
         filterDict.put("2", makeFilter(tvClass, tvArea, years, orders));
-        filterDict.put("4", makeFilter(comicClass, tvArea, years, orders));
+        filterDict.put("4", makeFilter(comicClass, movieArea, years, orders));
         filterDict.put("3", makeFilter(showClass, tvArea, years, orders));
         filterDict.put("5", makeFilter(shortClass, shortArea, years, orders));
 
@@ -134,11 +137,46 @@ public class FengYe extends Spider {
         return arr;
     }
 
+    // ========== 重写首页内容，抓取腾讯/优酷/B站+全分类区块，解决首页空白 ==========
     @Override
     public String homeVideoContent() throws Exception {
-        JSONObject obj = new JSONObject();
-        obj.put("list", new JSONArray());
-        return obj.toString();
+        JSONArray list = new JSONArray();
+        try {
+            String html = get(host + "/");
+            Document doc = Jsoup.parse(html);
+            // 匹配页面所有专区区块：腾讯VIP、优酷VIP、B站VIP、电视剧、动漫、电影、综艺、短剧
+            Elements allBlocks = doc.select(".tv4");
+            for (Element block : allBlocks) {
+                Elements items = block.select(".public-list-box");
+                for (Element item : items) {
+                    Element link = item.selectFirst(".public-list-exp");
+                    if (link == null) continue;
+                    String href = link.attr("href");
+                    Matcher m = vidPat.matcher(href);
+                    if (!m.find()) continue;
+                    String vid = m.group(1);
+                    String name = link.attr("title").trim();
+                    Element img = link.selectFirst("img");
+                    String pic = "";
+                    if (img != null) {
+                        pic = img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src");
+                    }
+                    Element noteTag = item.selectFirst(".public-list-prb");
+                    String remark = noteTag != null ? noteTag.text().trim() : "";
+                    JSONObject data = new JSONObject();
+                    data.put("vod_id", vid);
+                    data.put("vod_name", name);
+                    data.put("vod_pic", pic);
+                    data.put("vod_remarks", remark);
+                    list.put(data);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        JSONObject ret = new JSONObject();
+        ret.put("list", list);
+        return ret.toString();
     }
 
     // 分类分页列表
@@ -166,7 +204,6 @@ public class FengYe extends Spider {
             String html = get(url);
             Document doc = Jsoup.parse(html);
             Elements items = doc.select(".public-list-box");
-            Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
             for (Element item : items) {
                 Element link = item.selectFirst(".public-list-exp");
                 if (link == null) continue;
@@ -381,7 +418,7 @@ public class FengYe extends Spider {
         byte[] decodeBytes = Base64.getDecoder().decode(data);
         byte[] xor = new byte[decodeBytes.length];
         for (int i = 0; i < decodeBytes.length; i++) {
-            xor[i] = (byte) (decodeBytes[i] ^ key.charAt(i % key.length()));
+            xor[i] = (byte) (decodeBytes[i] ^ key.charAt(i % key.length));
         }
         byte[] secondDecode = Base64.getDecoder().decode(new String(xor));
         return new String(secondDecode, StandardCharsets.UTF_8);
@@ -467,7 +504,6 @@ public class FengYe extends Spider {
             Headers.Builder hd = headers.newBuilder();
             String html = post(searchUrl, param, hd.build());
             Document doc = Jsoup.parse(html);
-            Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
             Elements items = doc.select(".public-list-box");
             for (Element item : items) {
                 Element link = item.selectFirst(".public-list-exp");
