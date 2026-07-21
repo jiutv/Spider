@@ -748,33 +748,58 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 搜索列表抓取
-     * 搜索提交地址：/cupfox-search/-------------.html
-     * 列表卡片选择器同分类页面 .public-list-box
+     * 搜索列表抓取【适配网站GET伪静态分页，修复无结果问题】
+     * 页面表单method=get，真实搜索分页URL格式：/cupfox-search/URL编码关键词----------页码---.html
+     * 影片卡片容器选择器：.public-list-box public-pic-b
+     * 封面链接：.public-list-exp
+     * 更新集数标签：.public-list-prb
+     * @param key 搜索关键词
+     * @param quick 快速搜索标记（APP固定传false）
+     * @param pg 当前页码字符串
+     * @return 搜索结果JSON
      */
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         JSONArray list = new JSONArray();
-        int page = Integer.parseInt(pg);
+        int pageNum = Integer.parseInt(pg);
+        // 关键词UTF-8 URL编码，适配网站伪静态路径
+        String encodeWord = URLEncoder.encode(key, StandardCharsets.UTF_8.name());
+        // 拼接网站标准搜索分页URL模板（和页面分页href完全一致）
+        String searchUrl = String.format("%s/cupfox-search/%s----------%s---.html", host, encodeWord, pageNum);
+
         try {
-            String searchUrl = host + "/cupfox-search/-------------.html";
-            Map<String, String> param = new HashMap<>();
-            param.put("wd", key); // 搜索关键词表单字段
-            Headers.Builder hd = headers.newBuilder();
-            String html = post(searchUrl, param, hd.build());
+            // 追加搜索专用请求头，防止网站拦截返回空白页面
+            Headers.Builder searchHeader = headers.newBuilder();
+            searchHeader.add("X-Requested-With", "XMLHttpRequest");
+            searchHeader.add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            // GET请求获取搜索结果页面
+            String html = getWithHeader(searchUrl, searchHeader.build());
             Document doc = Jsoup.parse(html);
+
+            // 匹配所有搜索结果影片卡片
             Elements items = doc.select(".public-list-box");
             for (Element item : items) {
+                // 封面+标题a链接
                 Element link = item.selectFirst(".public-list-exp");
                 if (link == null) continue;
-                Matcher m = vidPat.matcher(link.attr("href"));
+                String href = link.attr("href");
+                Matcher m = vidPat.matcher(href);
                 if (!m.find()) continue;
                 String vid = m.group(1);
                 String name = link.attr("title").trim();
+
+                // 优先读取懒加载data-src封面图
                 Element img = link.selectFirst("img");
-                String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
+                String pic = "";
+                if (img != null) {
+                    pic = img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src");
+                }
+
+                // 更新集数/版本备注
                 Element note = item.selectFirst(".public-list-prb");
                 String remark = note != null ? note.text().trim() : "";
+
+                // 组装APP识别的影片数据对象
                 JSONObject obj = new JSONObject();
                 obj.put("vod_id", vid);
                 obj.put("vod_name", name);
@@ -783,14 +808,17 @@ public class FengYe extends Spider {
                 list.put(obj);
             }
         } catch (Exception e) {
+            // 打印异常日志，方便调试报错
             e.printStackTrace();
         }
+
         JSONObject ret = new JSONObject();
         ret.put("list", list);
-        ret.put("page", page);
-        ret.put("pagecount", 1); // 搜索仅单页
+        ret.put("page", pageNum);
+        // 支持分页下滑加载，返回下一页页码
+        ret.put("pagecount", pageNum + 1);
         ret.put("limit", list.length());
-        ret.put("total", list.length());
+        ret.put("total", 9999);
         return ret.toString();
     }
 }
