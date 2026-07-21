@@ -29,6 +29,8 @@ public class FengYe extends Spider {
     private Headers headers;
     // 全局影片正则
     private final Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
+    // label分页正则 匹配 /page/数字.html
+    private final Pattern pagePat = Pattern.compile("/page/(\\d+)\\.html");
 
     @Override
     public void init(Context context, String extend) {
@@ -46,7 +48,7 @@ public class FengYe extends Spider {
                 .build();
     }
 
-    // 生成分类JSONObject，适配截图简洁写法
+    // 生成分类JSONObject
     private JSONObject getClassMap(String cid, String name) throws Exception {
         return new JSONObject().put("type_id", cid).put("type_name", name);
     }
@@ -83,15 +85,13 @@ public class FengYe extends Spider {
         }
     }
 
-    // 首页分类、筛选【新增腾讯/优酷/B站专区导航】
+    // 首页分类、筛选【qq/yk/bli无筛选】
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
-        // 置顶三大视频平台专区
         classes.put(getClassMap("qq", "腾讯VIP精选"));
         classes.put(getClassMap("yk", "优酷VIP精选"));
         classes.put(getClassMap("bli", "B站VIP精选"));
-        // 原有基础分类
         classes.put(getClassMap("1", "电影"));
         classes.put(getClassMap("2", "电视剧"));
         classes.put(getClassMap("4", "动漫"));
@@ -117,11 +117,7 @@ public class FengYe extends Spider {
         String[] shortClass = {"女频", "男频", "复仇", "甜宠", "穿越", "逆袭", "战神", "脑洞"};
         String[] shortArea = {"内地", "其他"};
 
-        // 三大专区复用对应筛选模板
-        filterDict.put("qq", makeFilter(movieClass, movieArea, years, orders));
-        filterDict.put("yk", makeFilter(movieClass, movieArea, years, orders));
-        filterDict.put("bli", makeFilter(comicClass, movieArea, years, orders));
-        // 原有基础分类筛选
+        // qq/yk/bli 不加入筛选
         filterDict.put("1", makeFilter(movieClass, movieArea, years, orders));
         filterDict.put("2", makeFilter(tvClass, tvArea, years, orders));
         filterDict.put("4", makeFilter(comicClass, movieArea, years, orders));
@@ -151,14 +147,13 @@ public class FengYe extends Spider {
         return arr;
     }
 
-    // ========== 重写首页内容，抓取腾讯/优酷/B站+全分类区块，解决首页空白 ==========
+    // 首页内容，抓取首页所有tv4区块固定内容
     @Override
     public String homeVideoContent() throws Exception {
         JSONArray list = new JSONArray();
         try {
             String html = get(host + "/");
             Document doc = Jsoup.parse(html);
-            // 匹配页面所有专区区块：腾讯VIP、优酷VIP、B站VIP、电视剧、动漫、电影、综艺、短剧
             Elements allBlocks = doc.select(".tv4");
             for (Element block : allBlocks) {
                 Elements items = block.select(".public-list-box");
@@ -193,51 +188,65 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 分类分页列表【新增拦截qq/yk/bli专区抓取逻辑】
+    // 分类分页列表【适配真实分页路径/page/xx.html】
     @Override
     public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
-        // 拦截三大平台专区，单独抓取首页对应区块影片
+        // 腾讯/优酷/B站VIP专区逻辑
         if ("qq".equals(cid) || "yk".equals(cid) || "bli".equals(cid)) {
-            String html = get(host + "/");
+            int page = Integer.parseInt(pg);
+            String pageUrl;
+            // 真实分页路径 /label/qq/page/1.html
+            pageUrl = host + "/label/" + cid + "/page/" + page + ".html";
+            String html = get(pageUrl);
             Document doc = Jsoup.parse(html);
             JSONArray list = new JSONArray();
-            String blockText;
-            if ("qq".equals(cid)) blockText = "腾讯VIP";
-            else if ("yk".equals(cid)) blockText = "优酷VIP";
-            else blockText = "B站VIP";
 
-            Element targetBlock = doc.selectFirst(".tv4:contains(" + blockText + ")");
-            if (targetBlock != null) {
-                Elements items = targetBlock.select(".public-list-box");
-                for (Element item : items) {
-                    Element link = item.selectFirst(".public-list-exp");
-                    if (link == null) continue;
-                    String href = link.attr("href");
-                    Matcher m = vidPat.matcher(href);
-                    if (!m.find()) continue;
-                    String vid = m.group(1);
-                    String name = link.attr("title").trim();
-                    Element img = link.selectFirst("img");
-                    String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
-                    String remark = item.selectFirst(".public-list-prb") != null ? item.selectFirst(".public-list-prb").text().trim() : "";
-                    JSONObject data = new JSONObject();
-                    data.put("vod_id", vid);
-                    data.put("vod_name", name);
-                    data.put("vod_pic", pic);
-                    data.put("vod_remarks", remark);
-                    list.put(data);
+            // 影片列表选择器 .list-vod .public-list-box.public-pic-b
+            Elements vodItems = doc.select(".list-vod .public-list-box.public-pic-b");
+            for (Element item : vodItems) {
+                Element link = item.selectFirst(".public-list-exp");
+                if (link == null) continue;
+                String href = link.attr("href");
+                Matcher m = vidPat.matcher(href);
+                if (!m.find()) continue;
+                String vid = m.group(1);
+                String name = link.attr("title").trim();
+                Element img = link.selectFirst("img");
+                String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
+                String remark = item.selectFirst(".public-list-prb") != null ? item.selectFirst(".public-list-prb").text().trim() : "";
+                JSONObject data = new JSONObject();
+                data.put("vod_id", vid);
+                data.put("vod_name", name);
+                data.put("vod_pic", pic);
+                data.put("vod_remarks", remark);
+                list.put(data);
+            }
+
+            // 判断下一页：分页class=page-link
+            boolean hasNext = false;
+            Elements pageLinks = doc.select(".page-info a.page-link");
+            for (Element a : pageLinks) {
+                String href = a.attr("href");
+                Matcher m = pagePat.matcher(href);
+                if (m.find()) {
+                    int num = Integer.parseInt(m.group(1));
+                    if (num > page) {
+                        hasNext = true;
+                        break;
+                    }
                 }
             }
+
             JSONObject ret = new JSONObject();
             ret.put("list", list);
-            ret.put("page", 1);
-            ret.put("pagecount", 1);
-            ret.put("limit", 99);
-            ret.put("total", list.length());
+            ret.put("page", page);
+            ret.put("pagecount", hasNext ? page + 1 : page);
+            ret.put("limit", vodItems.size());
+            ret.put("total", 9999);
             return ret.toString();
         }
 
-        // 原有普通数字分类分页逻辑不变
+        // 普通数字分类（电影/电视剧/动漫/综艺/短剧）原有逻辑不变
         int page = Integer.parseInt(pg);
         String area = ext.getOrDefault("area", "");
         String by = ext.getOrDefault("by", "");
@@ -385,7 +394,6 @@ public class FengYe extends Spider {
             if (encrypt == 1 || encrypt == 2) {
                 durl = java.net.URLDecoder.decode(durl, "UTF-8");
                 if (encrypt == 2) {
-                    // JDK原生Base64解码，无自定义工具类
                     byte[] decodeBytes = Base64.getDecoder().decode(durl);
                     durl = new String(decodeBytes, StandardCharsets.UTF_8);
                     durl = java.net.URLDecoder.decode(durl, "UTF-8");
@@ -396,7 +404,6 @@ public class FengYe extends Spider {
                 ret.put("url", durl);
                 return ret.toString();
             }
-            // 获取解析接口
             String configJs = get(host + "/static/js/playerconfig.js");
             String parseApi = "";
             if (!TextUtils.isEmpty(fromFlag)) {
@@ -468,13 +475,12 @@ public class FengYe extends Spider {
         }
     }
 
-    // 解密1：【已修复】异或byte/char类型不匹配编译报错
+    // 解密1
     private String jsDecrypt1(String data) throws Exception {
         String key = md5("test");
         byte[] decodeBytes = Base64.getDecoder().decode(data);
         byte[] xor = new byte[decodeBytes.length];
         for (int i = 0; i < decodeBytes.length; i++) {
-            // 单独转换char为byte，统一运算类型，消除编译报错
             byte keyByte = (byte) key.charAt(i % key.length());
             xor[i] = (byte) (decodeBytes[i] ^ keyByte);
         }
@@ -497,13 +503,12 @@ public class FengYe extends Spider {
         return sb.toString();
     }
 
-    // 解密3：修复JSONArray.indexOf不存在，改用循环遍历
+    // 解密3
     private String jsDecrypt3(String data) throws Exception {
         data = fixB64(data);
         String[] parts = data.split("/");
         if (parts.length < 3) return data;
 
-        // 原生Base64解码
         byte[] arr1Bytes = Base64.getDecoder().decode(fixB64(parts[0]));
         JSONArray arr1 = new JSONArray(new String(arr1Bytes, StandardCharsets.UTF_8));
 
@@ -517,7 +522,6 @@ public class FengYe extends Spider {
         StringBuilder sb = new StringBuilder();
         for (char c : cipher.toCharArray()) {
             int idx = -1;
-            // 替换不存在的indexOf，手动循环匹配，消除编译报错
             for (int k = 0; k < arr2.length(); k++) {
                 if (arr2.getString(k).equals(String.valueOf(c))) {
                     idx = k;
@@ -536,7 +540,7 @@ public class FengYe extends Spider {
         return s;
     }
 
-    // MD5加密，JDK原生无第三方工具
+    // MD5加密
     private String md5(String text) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
         byte[] bytes = md.digest(text.getBytes(StandardCharsets.UTF_8));
