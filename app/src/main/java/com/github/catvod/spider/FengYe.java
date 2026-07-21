@@ -34,11 +34,13 @@ public class FengYe extends Spider {
 
     @Override
     public void init(Context context, String extend) {
-        // 初始化OkHttp客户端、请求头
+        // 修复1：开启自动重定向，解决分页301跳转空白
         client = new OkHttpClient.Builder()
                 .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .build();
         headers = new Headers.Builder()
                 .add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
@@ -85,7 +87,7 @@ public class FengYe extends Spider {
         }
     }
 
-    // 首页分类、筛选【qq/yk/bli无筛选】
+    // 首页分类、筛选【qq/yk/bli无筛选，不生成筛选控件】
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
@@ -117,7 +119,7 @@ public class FengYe extends Spider {
         String[] shortClass = {"女频", "男频", "复仇", "甜宠", "穿越", "逆袭", "战神", "脑洞"};
         String[] shortArea = {"内地", "其他"};
 
-        // qq/yk/bli 不加入筛选
+        // qq/yk/bli 不加入筛选，APP不会显示筛选栏
         filterDict.put("1", makeFilter(movieClass, movieArea, years, orders));
         filterDict.put("2", makeFilter(tvClass, tvArea, years, orders));
         filterDict.put("4", makeFilter(comicClass, movieArea, years, orders));
@@ -188,20 +190,20 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 分类分页列表【适配真实分页路径/page/xx.html】
+    // 分类分页列表【适配真实分页路径/page/xx.html，修复3大BUG】
     @Override
     public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
         // 腾讯/优酷/B站VIP专区逻辑
         if ("qq".equals(cid) || "yk".equals(cid) || "bli".equals(cid)) {
+            // 修复2：清空筛选参数，页面无筛选接口，避免参数污染请求
+            ext.clear();
             int page = Integer.parseInt(pg);
-            String pageUrl;
-            // 真实分页路径 /label/qq/page/1.html
-            pageUrl = host + "/label/" + cid + "/page/" + page + ".html";
+            String pageUrl = host + "/label/" + cid + "/page/" + page + ".html";
             String html = get(pageUrl);
             Document doc = Jsoup.parse(html);
             JSONArray list = new JSONArray();
 
-            // 影片列表选择器 .list-vod .public-list-box.public-pic-b
+            // 影片列表选择器 匹配页面真实class .list-vod .public-list-box.public-pic-b
             Elements vodItems = doc.select(".list-vod .public-list-box.public-pic-b");
             for (Element item : vodItems) {
                 Element link = item.selectFirst(".public-list-exp");
@@ -222,9 +224,9 @@ public class FengYe extends Spider {
                 list.put(data);
             }
 
-            // 判断下一页：分页class=page-link
+            // 修复3：过滤当前页class=ho的无效分页链接，精准判断下一页
             boolean hasNext = false;
-            Elements pageLinks = doc.select(".page-info a.page-link");
+            Elements pageLinks = doc.select(".page-info a.page-link:not(.ho)");
             for (Element a : pageLinks) {
                 String href = a.attr("href");
                 Matcher m = pagePat.matcher(href);
