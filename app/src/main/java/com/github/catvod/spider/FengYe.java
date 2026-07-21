@@ -3,7 +3,6 @@ package com.github.catvod.spider;
 import android.content.Context;
 import android.text.TextUtils;
 import com.github.catvod.crawler.Spider;
-import com.github.catvod.spider.merge.p001b.d;
 import okhttp3.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -21,6 +20,9 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+// JDK原生Base64，无自定义工具类，规避版权
+import java.util.Base64;
 
 public class CupFox extends Spider {
     // 站点主域名，换站只改此处
@@ -292,7 +294,9 @@ public class CupFox extends Spider {
             if (encrypt == 1 || encrypt == 2) {
                 durl = java.net.URLDecoder.decode(durl, "UTF-8");
                 if (encrypt == 2) {
-                    durl = new String(Base64.decode(durl), StandardCharsets.UTF_8);
+                    // JDK原生Base64解码，无自定义工具类
+                    byte[] decodeBytes = Base64.getDecoder().decode(durl);
+                    durl = new String(decodeBytes, StandardCharsets.UTF_8);
                     durl = java.net.URLDecoder.decode(durl, "UTF-8");
                 }
             }
@@ -373,20 +377,23 @@ public class CupFox extends Spider {
         }
     }
 
-    // 三套JS解密，对应Python原版
+    // 解密1：JDK原生Base64，无自定义工具
     private String jsDecrypt1(String data) throws Exception {
         String key = md5("test");
-        byte[] decode = Base64.decode(data);
-        byte[] xor = new byte[decode.length];
-        for (int i = 0; i < decode.length; i++) {
-            xor[i] = (byte) (decode[i] ^ key.charAt(i % key.length()));
+        byte[] decodeBytes = Base64.getDecoder().decode(data);
+        byte[] xor = new byte[decodeBytes.length];
+        for (int i = 0; i < decodeBytes.length; i++) {
+            xor[i] = (byte) (decodeBytes[i] ^ key.charAt(i % key.length()));
         }
-        return new String(Base64.decode(new String(xor)), StandardCharsets.UTF_8);
+        byte[] secondDecode = Base64.getDecoder().decode(new String(xor));
+        return new String(secondDecode, StandardCharsets.UTF_8);
     }
 
+    // 解密2
     private String jsDecrypt2(String data) throws Exception {
         String staticChars = "PXhw7UT1B0a9kQDKZsjIASmOezxYG4CHo5Jyfg2b8FLpEvRr3WtVnlqMidu6cN";
-        String decode = new String(Base64.decode(data), StandardCharsets.UTF_8);
+        byte[] decodeBytes = Base64.getDecoder().decode(data);
+        String decode = new String(decodeBytes, StandardCharsets.UTF_8);
         StringBuilder sb = new StringBuilder();
         for (int i = 1; i < decode.length(); i += 3) {
             char c = decode.charAt(i);
@@ -397,27 +404,46 @@ public class CupFox extends Spider {
         return sb.toString();
     }
 
+    // 解密3：修复JSONArray.indexOf不存在，改用循环遍历
     private String jsDecrypt3(String data) throws Exception {
         data = fixB64(data);
         String[] parts = data.split("/");
         if (parts.length < 3) return data;
-        JSONArray arr1 = new JSONArray(new String(Base64.decode(fixB64(parts[0])), StandardCharsets.UTF_8));
-        JSONArray arr2 = new JSONArray(new String(Base64.decode(fixB64(parts[1])), StandardCharsets.UTF_8));
-        String cipher = new String(Base64.decode(fixB64(String.join("/", Arrays.copyOfRange(parts, 2, parts.length)))), StandardCharsets.UTF_8);
+
+        // 原生Base64解码
+        byte[] arr1Bytes = Base64.getDecoder().decode(fixB64(parts[0]));
+        JSONArray arr1 = new JSONArray(new String(arr1Bytes, StandardCharsets.UTF_8));
+
+        byte[] arr2Bytes = Base64.getDecoder().decode(fixB64(parts[1]));
+        JSONArray arr2 = new JSONArray(new String(arr2Bytes, StandardCharsets.UTF_8));
+
+        String cipherRaw = String.join("/", Arrays.copyOfRange(parts, 2, parts.length));
+        byte[] cipherBytes = Base64.getDecoder().decode(fixB64(cipherRaw));
+        String cipher = new String(cipherBytes, StandardCharsets.UTF_8);
+
         StringBuilder sb = new StringBuilder();
         for (char c : cipher.toCharArray()) {
-            int idx = arr2.indexOf(String.valueOf(c));
+            int idx = -1;
+            // 替换不存在的indexOf，手动循环匹配，消除编译报错
+            for (int k = 0; k < arr2.length(); k++) {
+                if (arr2.getString(k).equals(String.valueOf(c))) {
+                    idx = k;
+                    break;
+                }
+            }
             sb.append(idx == -1 ? c : arr1.getString(idx));
         }
         return sb.toString();
     }
 
+    // 补全Base64填充等号
     private String fixB64(String s) {
         int mod = s.length() % 4;
         if (mod != 0) s += "====".substring(0, 4 - mod);
         return s;
     }
 
+    // MD5加密，JDK原生无第三方工具
     private String md5(String text) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
         byte[] bytes = md.digest(text.getBytes(StandardCharsets.UTF_8));
