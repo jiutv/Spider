@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 // JDK原生Base64，无自定义工具类，规避版权
 import java.util.Base64;
 
-public class CupFox extends Spider {
+public class FengYe extends Spider {
     // 站点主域名，换站只改此处
     private final String host = "https://www.tjtcdl.com";
     private OkHttpClient client;
