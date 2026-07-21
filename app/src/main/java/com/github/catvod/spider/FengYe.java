@@ -686,6 +686,7 @@ public class FengYe extends Spider {
 
     /**
      * 解密模式3：双数组映射置换解密（最常用）
+     * 修复编译错误：JSONArray 使用 .length() 方法获取长度，不能用 .length 属性
      */
     private String jsDecrypt3(String data) throws Exception {
         data = fixB64(data);
@@ -705,7 +706,8 @@ public class FengYe extends Spider {
         StringBuilder sb = new StringBuilder();
         for (char c : cipher.toCharArray()) {
             int idx = -1;
-            for (int k = 0; k < arr2.length; k++) {
+            // 修复点：arr2.length() 替代 arr2.length
+            for (int k = 0; k < arr2.length(); k++) {
                 if (arr2.getString(k).equals(String.valueOf(c))) {
                     idx = k;
                     break;
@@ -792,27 +794,3 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 }
-
-//所有页面 CSS 选择器全部标注
-//首页区块 .tv4
-//影片卡片 .public-list-box
-//封面链接 .public-list-exp
-//更新集数标签 .public-list-prb
-//详情信息 .info-parameter li
-//线路 / 分集 .anthology-tab / .anthology-list-box
-//解析中转参数容器 #player-data
-//路由路径分段注释
-//VIP 专区 /label/xxx/page/页码.html
-//筛选分类 /cupfox-list/xxx 完整模板拆分说明
-//正则用途注释
-//vidPat：提取影片 ID
-//pagePat：提取分页数字
-//playerPat：提取播放器加密 JSON
-//解密模块拆分注释
-//jsDecrypt1 /jsDecrypt2 /jsDecrypt3 分别标注加密模式，网站解密规则变动直接改对应函数
-//筛选数组分区注释
-//电影 / 电视剧 / 动漫 / 综艺 / 短剧数组分开标注，网站新增分类直接在对应数组追加文字即可
-//关键参数注释
-//ext 筛选参数（area/class/by/year）、urlmode 加密类型、parse 解析开关、线路分隔符 $$$ / 集数分隔符 #
-//工具方法单独注释
-//md5、base64 补全、自定义头 GET、POST 搜索等通用工具，后期适配其他站点可直接复用
