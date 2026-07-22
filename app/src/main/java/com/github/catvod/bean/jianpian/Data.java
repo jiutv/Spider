@@ -49,6 +49,11 @@ public class Data {
         return TextUtils.isEmpty(id) ? "" : id;
     }
 
+    // 新增无参方法，给短剧手动组装封面使用
+    public String getThumbnail() {
+        return TextUtils.isEmpty(thumbnail) ? "" : thumbnail;
+    }
+
     // 修复：自动处理路径首尾斜杠，避免图片404
     public String getThumbnail(String imgDomain) {
         if (TextUtils.isEmpty(thumbnail)) return "";
