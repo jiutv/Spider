@@ -49,9 +49,9 @@ public class Data {
         return TextUtils.isEmpty(id) ? "" : id;
     }
 
-    // 恢复原始 http://
+    // 最终修复：HTTPS + 新域名
     public String getThumbnail(String imgDomain) {
-        return TextUtils.isEmpty(thumbnail) ? "" : "http://" + imgDomain + thumbnail;
+        return TextUtils.isEmpty(thumbnail) ? "" : "https://" + imgDomain + thumbnail;
     }
 
     public String getTitle() {
