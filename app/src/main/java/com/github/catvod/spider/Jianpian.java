@@ -13,7 +13,6 @@ import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.net.URLEncoder;
@@ -26,10 +25,10 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 双模式筛选终极版
+ * 荐片 双模式筛选终极版【修复剧集无数据BUG】
  * 电影：type地区年份筛选
  * 剧类：category_id分类筛选
- * 全官方抓包ID，完美适配所有分类
+ * 修复：未选择筛选时，不再传递空category_id参数
  */
 public class Jianpian extends Spider {
 
@@ -72,7 +71,7 @@ public class Jianpian extends Spider {
                 "\"type\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"剧情\"},{\"k\":\"2\",\"v\":\"爱情\"},{\"k\":\"3\",\"v\":\"动画\"},{\"k\":\"4\",\"v\":\"喜剧\"},{\"k\":\"5\",\"v\":\"战争\"},{\"k\":\"6\",\"v\":\"歌舞\"},{\"k\":\"7\",\"v\":\"古装\"},{\"k\":\"8\",\"v\":\"奇幻\"},{\"k\":\"9\",\"v\":\"冒险\"},{\"k\":\"10\",\"v\":\"动作\"},{\"k\":\"11\",\"v\":\"科幻\"},{\"k\":\"12\",\"v\":\"悬疑\"},{\"k\":\"13\",\"v\":\"犯罪\"},{\"k\":\"14\",\"v\":\"家庭\"},{\"k\":\"15\",\"v\":\"传记\"},{\"k\":\"16\",\"v\":\"运动\"},{\"k\":\"17\",\"v\":\"同性\"},{\"k\":\"18\",\"v\":\"惊悚\"},{\"k\":\"19\",\"v\":\"情色\"},{\"k\":\"20\",\"v\":\"短片\"},{\"k\":\"21\",\"v\":\"历史\"},{\"k\":\"22\",\"v\":\"音乐\"},{\"k\":\"23\",\"v\":\"西部\"},{\"k\":\"24\",\"v\":\"武侠\"},{\"k\":\"25\",\"v\":\"恐怖\"}]," +
                 "\"area\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"国产\"},{\"k\":\"3\",\"v\":\"中国香港\"},{\"k\":\"6\",\"v\":\"中国台湾\"},{\"k\":\"5\",\"v\":\"美国\"},{\"k\":\"18\",\"v\":\"韩国\"},{\"k\":\"2\",\"v\":\"日本\"}]," +
                 "\"year\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"162\",\"v\":\"2026\"},{\"k\":\"107\",\"v\":\"2025\"},{\"k\":\"119\",\"v\":\"2024\"},{\"k\":\"153\",\"v\":\"2023\"},{\"k\":\"101\",\"v\":\"2022\"},{\"k\":\"118\",\"v\":\"2021\"},{\"k\":\"16\",\"v\":\"2020\"},{\"k\":\"7\",\"v\":\"2019\"},{\"k\":\"2\",\"v\":\"2018\"},{\"k\":\"3\",\"v\":\"2017\"},{\"k\":\"22\",\"v\":\"2016\"},{\"k\":\"2015\",\"v\":\"2015以前\"}]," +
-                // 剧类筛选参数（你刚刚抓包的电视剧/动漫/综艺分类）
+                // 剧类筛选参数（电视剧/动漫/综艺分类）
                 "\"category_id\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"70\",\"v\":\"言情\"},{\"k\":\"71\",\"v\":\"爱情\"},{\"k\":\"72\",\"v\":\"战神\"},{\"k\":\"73\",\"v\":\"古代\"},{\"k\":\"74\",\"v\":\"萌娃\"},{\"k\":\"75\",\"v\":\"神医\"},{\"k\":\"76\",\"v\":\"玄幻\"},{\"k\":\"77\",\"v\":\"重生\"},{\"k\":\"79\",\"v\":\"激情\"},{\"k\":\"82\",\"v\":\"时尚\"},{\"k\":\"83\",\"v\":\"剧情演绎\"},{\"k\":\"84\",\"v\":\"影视\"},{\"k\":\"85\",\"v\":\"人文社科\"},{\"k\":\"86\",\"v\":\"二次元\"},{\"k\":\"87\",\"v\":\"明星八卦\"},{\"k\":\"89\",\"v\":\"个人管理\"},{\"k\":\"90\",\"v\":\"音乐\"},{\"k\":\"91\",\"v\":\"汽车\"},{\"k\":\"92\",\"v\":\"休闲\"},{\"k\":\"93\",\"v\":\"校园教育\"},{\"k\":\"94\",\"v\":\"游戏\"},{\"k\":\"95\",\"v\":\"科普\"},{\"k\":\"96\",\"v\":\"科技\"},{\"k\":\"97\",\"v\":\"时政社会\"},{\"k\":\"98\",\"v\":\"萌宠\"},{\"k\":\"113\",\"v\":\"随拍\"},{\"k\":\"114\",\"v\":\"体育\"},{\"k\":\"80\",\"v\":\"穿越\"},{\"k\":\"112\",\"v\":\"闪婚\"}]," +
                 "\"sort\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"update\",\"v\":\"最新\"},{\"k\":\"hot\",\"v\":\"最热\"},{\"k\":\"rating\",\"v\":\"评分\"}]" +
                 "}";
@@ -115,7 +114,6 @@ public class Jianpian extends Spider {
             HashMap<String, String> ext = new HashMap<>();
             if (extend != null) ext.putAll(extend);
 
-            // 区分电影 / 剧集 筛选参数
             String type = ext.getOrDefault("type", "");
             String area = ext.getOrDefault("area", "");
             String year = ext.getOrDefault("year", "");
@@ -127,8 +125,15 @@ public class Jianpian extends Spider {
             if (tid.equals("1")) {
                 url = siteUrl + String.format("/api/crumb/list?fcate_pid=%s&type=%s&area=%s&year=%s&sort=%s&page=%s&category_id=", tid, type, area, year, sort, pg);
             } else {
-                // 电视剧/动漫/综艺 走 category_id 短剧分类
-                url = siteUrl + String.format("/api/crumb/list?fcate_pid=%s&category_id=%s&sort=%s&page=%s", tid, cid, sort, pg);
+                // ============【修复重点】============
+                // 电视剧/动漫/综艺：空cid时不拼接category_id参数
+                StringBuilder sb = new StringBuilder();
+                sb.append(siteUrl);
+                sb.append(String.format("/api/crumb/list?fcate_pid=%s&sort=%s&page=%s", tid, sort, pg));
+                if (!cid.isEmpty()) {
+                    sb.append("&category_id=").append(cid);
+                }
+                url = sb.toString();
             }
 
             Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
