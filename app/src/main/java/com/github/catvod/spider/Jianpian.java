@@ -27,7 +27,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 最终可编译完整版
+ * 荐片 修复版
+ * 修复：电视剧/动漫/综艺 请求参数与网页不一致导致无数据
  */
 public class Jianpian extends Spider {
 
@@ -150,21 +151,16 @@ public class Jianpian extends Spider {
                 sortVal = extend.getOrDefault("sort", "update");
             }
 
-            String url;
-            if (tid.equals("1")) {
-                // 电影
-                url = siteUrl + String.format("/api/crumb/list?fcate_pid=%s&type=%s&area=%s&year=%s&sort=%s&page=%s&category_id=",
-                        tid, typeVal, areaVal, yearVal, sortVal, pg);
-            } else {
-                // 电视剧/动漫/综艺 tid=2/3/4
-                StringBuilder sb = new StringBuilder();
-                sb.append(siteUrl);
-                sb.append(String.format("/api/crumb/list?fcate_pid=%s&sort=%s&page=%s", tid, sortVal, pg));
-                if (!cidVal.isEmpty()) {
-                    sb.append("&category_id=").append(cidVal);
-                }
-                url = sb.toString();
-            }
+            // ==========关键修复：统一所有 crumb/list 参数格式，完全匹配网页抓包==========
+            StringBuilder urlSb = new StringBuilder();
+            urlSb.append(siteUrl).append("/api/crumb/list?fcate_pid=").append(tid);
+            urlSb.append("&category_id=").append(cidVal);
+            urlSb.append("&area=").append(areaVal);
+            urlSb.append("&year=").append(yearVal);
+            urlSb.append("&type=").append(typeVal);
+            urlSb.append("&sort=").append(sortVal);
+            urlSb.append("&page=").append(pg);
+            String url = urlSb.toString();
 
             Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
             for (Data data : resp.getData()) {
