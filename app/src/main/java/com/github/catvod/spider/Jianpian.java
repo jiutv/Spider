@@ -109,7 +109,6 @@ public class Jianpian extends Spider {
                 list.add(data.vod(imgDomain));
             }
         }
-        // 移除 .page() 链式调用，老框架不支持
         return Result.get().vod(list).string();
     }
 
@@ -136,8 +135,8 @@ public class Jianpian extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        // 修复大写URL → 小写url
-        return Result.get().url(id).header(getHeader()).parse(false).string();
+        //修复：小写url，删除不兼容的.parse(false)
+        return Result.get().url(id).header(getHeader()).string();
     }
 
     @Override
@@ -153,7 +152,6 @@ public class Jianpian extends Spider {
         for (Search data : search.getData()) {
             list.add(data.vod(imgDomain));
         }
-        // 移除 .page()
         return Result.get().vod(list).string();
     }
 }
