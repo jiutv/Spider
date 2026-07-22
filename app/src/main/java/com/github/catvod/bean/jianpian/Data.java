@@ -106,6 +106,11 @@ public class Data {
         return new Vod(getId(), getTitle(), getThumbnail(imgDomain), getMask());
     }
 
+    // 短剧专用解析方法
+    public Vod vodShort(String imgDomain) {
+        return new Vod(getId(), getTitle(), getThumbnail(imgDomain), getMask());
+    }
+
     public String getValues(List<Value> items, boolean link) {
         StringBuilder sb = new StringBuilder();
         for (Value value : items) sb.append(value.getValue(link)).append(" ");
