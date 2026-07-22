@@ -28,7 +28,8 @@ import java.util.regex.Pattern;
 /**
  * 荐片 最终修复版
  * 修复：图片域名失效 → 替换为最新抓包域名 img.cqbqr.com
- * 修复：编译报错、url小写、删除parse、删除page
+ * 导航：Netflix前置 + 简体中文
+ * 新增：侧边筛选面板 + 特殊分类参数防护
  */
 public class Jianpian extends Spider {
 
@@ -61,12 +62,20 @@ public class Jianpian extends Spider {
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        List<String> typeIds = Arrays.asList("1", "2", "3", "4", "50", "99");
-        List<String> typeNames = Arrays.asList("電影", "電視劇", "動漫", "綜藝", "紀錄片", "Netflix");
+        // 顺序：Netflix → 电影 → 电视剧 → 动漫 → 综艺 → 纪录片
+        List<String> typeIds = Arrays.asList("99", "1", "2", "3", "4", "50");
+        List<String> typeNames = Arrays.asList("Netflix", "电影", "电视剧", "动漫", "综艺", "纪录片");
         for (int i = 0; i < typeIds.size(); i++) {
             classes.add(new Class(typeIds.get(i), typeNames.get(i)));
         }
-        String extendJson = (extend == null || extend.isEmpty()) ? "{}" : extend;
+
+        // 侧边筛选配置：地区、年份、排序
+        String extendJson = "{" +
+                "\"area\":[{\"k\":\"0\",\"v\":\"全部地区\"},{\"k\":\"大陆\",\"v\":\"大陆\"},{\"k\":\"香港\",\"v\":\"香港\"},{\"k\":\"台湾\",\"v\":\"台湾\"},{\"k\":\"欧美\",\"v\":\"欧美\"},{\"k\":\"日韩\",\"v\":\"日韩\"}]," +
+                "\"year\":[{\"k\":\"0\",\"v\":\"全部年份\"},{\"k\":\"2026\",\"v\":\"2026\"},{\"k\":\"2025\",\"v\":\"2025\"},{\"k\":\"2024\",\"v\":\"2024\"},{\"k\":\"2023\",\"v\":\"2023\"},{\"k\":\"2022\",\"v\":\"2022\"}]," +
+                "\"sort\":[{\"k\":\"updata\",\"v\":\"最新更新\"},{\"k\":\"hot\",\"v\":\"热门\"},{\"k\":\"score\",\"v\":\"评分\"}]" +
+                "}";
+
         return Result.string(classes, JsonParser.parseString(extendJson));
     }
 
