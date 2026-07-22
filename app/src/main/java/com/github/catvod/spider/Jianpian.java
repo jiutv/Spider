@@ -116,8 +116,14 @@ public class Jianpian extends Spider {
                 list.add(data.vod(imgDomain));
             }
         }
-        // 修复：直接传入字符串pg，不再强转int
-        return Result.get().page(pg).vod(list).string();
+        // 安全转换页码int，兼容Result.page(int)
+        int pageNum;
+        try {
+            pageNum = Integer.parseInt(pg);
+        } catch (Exception e) {
+            pageNum = 1;
+        }
+        return Result.get().page(pageNum).vod(list).string();
     }
 
     @Override
@@ -162,7 +168,13 @@ public class Jianpian extends Spider {
         for (Search data : search.getData()) {
             list.add(data.vod(imgDomain));
         }
-        // 修复：直接传入字符串pg，不再强转int
-        return Result.get().page(pg).vod(list).string();
+        // 安全转换页码int，兼容Result.page(int)
+        int pageNum;
+        try {
+            pageNum = Integer.parseInt(pg);
+        } catch (Exception e) {
+            pageNum = 1;
+        }
+        return Result.get().page(pageNum).vod(list).string();
     }
 }
