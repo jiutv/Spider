@@ -27,21 +27,17 @@ import java.util.regex.Pattern;
 
 /**
  * 新版荐片 完整修复版
- * 修复：旧域名失效、DNS轮询失效、UA拦截、轮播ID错误、演员乱码、数组适配、空指针容错
  * 有效主域名：japi.zxfmj.com
  * 新版包名：com.kgvteb.zfnjdk
  */
 public class Jianpian extends Spider {
 
-    // 新版固定有效主域名，废弃旧轮询域名
     private final String siteUrl = "https://japi.zxfmj.com";
     private String imgDomain;
     private String extend;
     private final Gson gson = new Gson();
-    // 清理演员残留标签正则
     private static final Pattern CR_TAG = Pattern.compile("\\[a=cr:[^\\]]+\\]|\\[/a\\]");
 
-    // 新版APP专属请求头，适配4.2.5版本包名
     private Map<String, String> getHeader() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 9; V2196A Build/PQ3A.190705.08211809; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36;webank/h5face;webank/1.0;netType:NETWORK_WIFI;appVersion:425;packageName:com.kgvteb.zfnjdk");
@@ -53,7 +49,6 @@ public class Jianpian extends Spider {
     @Override
     public void init(Context context, String extend) throws Exception {
         this.extend = extend;
-        // 初始化获取图片域名
         String json = OkHttp.string(siteUrl + "/api/appAuthConfig", getHeader());
         if (json.isEmpty()) throw new Exception("荐片主接口初始化失败");
         JsonObject root = gson.fromJson(json, JsonObject.class);
@@ -69,7 +64,6 @@ public class Jianpian extends Spider {
         for (int i = 0; i < typeIds.size(); i++) {
             classes.add(new Class(typeIds.get(i), typeNames.get(i)));
         }
-        // 修复extend空指针报错
         String extendJson = (extend == null || extend.isEmpty()) ? "{}" : extend;
         return Result.string(classes, JsonParser.parseString(extendJson));
     }
@@ -81,7 +75,6 @@ public class Jianpian extends Spider {
             String url = siteUrl + "/api/slide/list?pos_id=88";
             Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
             for (Data data : resp.getData()) {
-                // 修复关键BUG：轮播使用jump_id真实影片ID，而非自身id
                 list.add(data.homeVod(imgDomain));
             }
         } catch (Exception e) {
@@ -116,14 +109,8 @@ public class Jianpian extends Spider {
                 list.add(data.vod(imgDomain));
             }
         }
-        // 安全转换页码int，兼容Result.page(int)
-        int pageNum;
-        try {
-            pageNum = Integer.parseInt(pg);
-        } catch (Exception e) {
-            pageNum = 1;
-        }
-        return Result.get().page(pageNum).vod(list).string();
+        // 移除 .page() 链式调用，老框架不支持
+        return Result.get().vod(list).string();
     }
 
     @Override
@@ -133,7 +120,6 @@ public class Jianpian extends Spider {
         Data data = detail.getData();
         Vod vod = data.vod(imgDomain);
 
-        // 基础信息赋值
         vod.setVodPlayFrom(data.getVodFrom());
         vod.setVodYear(data.getYear());
         vod.setVodArea(data.getArea());
@@ -142,7 +128,6 @@ public class Jianpian extends Spider {
         vod.setVodDirector(data.getDirectors());
         vod.setVodContent(data.getDescription());
 
-        // 修复：清理演员标签乱码
         String actors = CR_TAG.matcher(data.getActors()).replaceAll("");
         vod.setVodActor(actors);
 
@@ -151,7 +136,7 @@ public class Jianpian extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        // 携带请求头，适配mv.shaxyd.com防盗链403
+        // 修复大写URL → 小写url
         return Result.get().url(id).header(getHeader()).parse(false).string();
     }
 
@@ -168,13 +153,7 @@ public class Jianpian extends Spider {
         for (Search data : search.getData()) {
             list.add(data.vod(imgDomain));
         }
-        // 安全转换页码int，兼容Result.page(int)
-        int pageNum;
-        try {
-            pageNum = Integer.parseInt(pg);
-        } catch (Exception e) {
-            pageNum = 1;
-        }
-        return Result.get().page(pageNum).vod(list).string();
+        // 移除 .page()
+        return Result.get().vod(list).string();
     }
 }
