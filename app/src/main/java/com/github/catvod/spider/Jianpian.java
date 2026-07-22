@@ -26,9 +26,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 新版荐片 完整修复版
- * 有效主域名：japi.zxfmj.com
- * 新版包名：com.kgvteb.zfnjdk
+ * 荐片 最终修复版
+ * 修复：图片域名失效 → 替换为最新抓包域名 img.cqbqr.com
+ * 修复：编译报错、url小写、删除parse、删除page
  */
 public class Jianpian extends Spider {
 
@@ -52,7 +52,9 @@ public class Jianpian extends Spider {
         String json = OkHttp.string(siteUrl + "/api/appAuthConfig", getHeader());
         if (json.isEmpty()) throw new Exception("荐片主接口初始化失败");
         JsonObject root = gson.fromJson(json, JsonObject.class);
-        imgDomain = root.getAsJsonObject("data").get("imgDomain").getAsString();
+        // 旧域名static.ztcuc.com失效，强制替换最新有效图片域名
+        //imgDomain = root.getAsJsonObject("data").get("imgDomain").getAsString();
+        imgDomain = "img.cqbqr.com";
         SpiderDebug.log("荐片初始化成功，图片域名：" + imgDomain);
     }
 
@@ -135,7 +137,6 @@ public class Jianpian extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        //修复：小写url，删除不兼容的.parse(false)
         return Result.get().url(id).header(getHeader()).string();
     }
 
