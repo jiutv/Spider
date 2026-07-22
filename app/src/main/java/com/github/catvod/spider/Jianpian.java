@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 编译可用完整版
+ * 荐片 最终可编译完整版
  */
 public class Jianpian extends Spider {
 
@@ -95,7 +95,7 @@ public class Jianpian extends Spider {
         if (tid.endsWith("/{pg}")) return searchContent(tid.split("/")[0], pg);
         List<Vod> list = new ArrayList<>();
 
-        // Netflix、纪录片、短剧 dyTag 接口分组
+        // Netflix、纪录片、短剧 dyTag 系列
         if (tid.equals("50") || tid.equals("99") || tid.equals("67")) {
             String cidVal = "";
             String sortVal = "update";
@@ -105,7 +105,7 @@ public class Jianpian extends Spider {
             }
             String url;
             if (tid.equals("67")) {
-                // 短剧独立接口解析
+                // 短剧接口
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl).append("/api/dyTag/hand_data?category_id=").append(tid);
                 if (!cidVal.isEmpty()) sb.append("&category_sub_id=").append(cidVal);
@@ -113,6 +113,7 @@ public class Jianpian extends Spider {
                     sb.append("&sort=").append(sortVal);
                 }
                 url = sb.toString();
+                // 短剧独立解析
                 String jsonStr = OkHttp.string(url, getHeader());
                 JsonObject root = JsonParser.parseString(jsonStr).getAsJsonObject();
                 JsonObject dataRoot = root.getAsJsonObject("data");
@@ -151,11 +152,11 @@ public class Jianpian extends Spider {
 
             String url;
             if (tid.equals("1")) {
-                // 电影分类
+                // 电影
                 url = siteUrl + String.format("/api/crumb/list?fcate_pid=%s&type=%s&area=%s&year=%s&sort=%s&page=%s&category_id=",
                         tid, typeVal, areaVal, yearVal, sortVal, pg);
             } else {
-                // 电视剧/动漫/综艺 tid=2/3/4 去除多余空参数
+                // 电视剧/动漫/综艺 tid=2/3/4
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl);
                 sb.append(String.format("/api/crumb/list?fcate_pid=%s&sort=%s&page=%s", tid, sortVal, pg));
@@ -209,8 +210,8 @@ public class Jianpian extends Spider {
         String encodeKey = URLEncoder.encode(key, StandardCharsets.UTF_8.name());
         String url = siteUrl + String.format("/api/v2/search/videoV2?key=%s&category_id=88&page=%s&pageSize=20", encodeKey, pg);
         Search search = Search.objectFrom(OkHttp.string(url, getHeader()));
-        for (Data data : search.getData()) {
-            list.add(data.vod(imgDomain));
+        for (Search item : search.getData()) {
+            list.add(item.vod(imgDomain));
         }
         return Result.get().vod(list).string();
     }
