@@ -49,9 +49,15 @@ public class Data {
         return TextUtils.isEmpty(id) ? "" : id;
     }
 
-    // 最终修复：HTTPS + 新域名
+    // 修复：自动处理路径首尾斜杠，避免图片404
     public String getThumbnail(String imgDomain) {
-        return TextUtils.isEmpty(thumbnail) ? "" : "https://" + imgDomain + thumbnail;
+        if (TextUtils.isEmpty(thumbnail)) return "";
+        String host = "https://" + imgDomain;
+        if (thumbnail.startsWith("/")) {
+            return host + thumbnail;
+        } else {
+            return host + "/" + thumbnail;
+        }
     }
 
     public String getTitle() {
@@ -106,7 +112,6 @@ public class Data {
         return new Vod(getId(), getTitle(), getThumbnail(imgDomain), getMask());
     }
 
-    // 短剧专用解析方法
     public Vod vodShort(String imgDomain) {
         return new Vod(getId(), getTitle(), getThumbnail(imgDomain), getMask());
     }
