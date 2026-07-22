@@ -13,6 +13,8 @@ import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.net.URLEncoder;
@@ -25,8 +27,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 最终版
- * 关闭Netflix、纪录片筛选，其余分类启用筛选
+ * 荐片 可编译修复版
  */
 public class Jianpian extends Spider {
 
@@ -57,14 +58,11 @@ public class Jianpian extends Spider {
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
         // 导航顺序：Netflix、电影、电视剧、短剧、动漫、综艺、纪录片
-        // setFilter(false) = 隐藏筛选按钮
-        classes.add(new Class("99", "Netflix").setFilter(false));
-        classes.add(new Class("1", "电影").setFilter(true));
-        classes.add(new Class("2", "电视剧").setFilter(true));
-        classes.add(new Class("67", "短剧").setFilter(true));
-        classes.add(new Class("3", "动漫").setFilter(true));
-        classes.add(new Class("4", "综艺").setFilter(true));
-        classes.add(new Class("50", "纪录片").setFilter(false));
+        List<String> typeIds = Arrays.asList("99", "1", "2", "67", "3", "4", "50");
+        List<String> typeNames = Arrays.asList("Netflix", "电影", "电视剧", "短剧", "动漫", "综艺", "纪录片");
+        for (int i = 0; i < typeIds.size(); i++) {
+            classes.add(new Class(typeIds.get(i), typeNames.get(i)));
+        }
 
         String extendJson = "{" +
                 "\"type\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"剧情\"},{\"k\":\"2\",\"v\":\"爱情\"},{\"k\":\"3\",\"v\":\"动画\"},{\"k\":\"4\",\"v\":\"喜剧\"},{\"k\":\"5\",\"v\":\"战争\"},{\"k\":\"6\",\"v\":\"歌舞\"},{\"k\":\"7\",\"v\":\"古装\"},{\"k\":\"8\",\"v\":\"奇幻\"},{\"k\":\"9\",\"v\":\"冒险\"},{\"k\":\"10\",\"v\":\"动作\"},{\"k\":\"11\",\"v\":\"科幻\"},{\"k\":\"12\",\"v\":\"悬疑\"},{\"k\":\"13\",\"v\":\"犯罪\"},{\"k\":\"14\",\"v\":\"家庭\"},{\"k\":\"15\",\"v\":\"传记\"},{\"k\":\"16\",\"v\":\"运动\"},{\"k\":\"17\",\"v\":\"同性\"},{\"k\":\"18\",\"v\":\"惊悚\"},{\"k\":\"19\",\"v\":\"情色\"},{\"k\":\"20\",\"v\":\"短片\"},{\"k\":\"21\",\"v\":\"历史\"},{\"k\":\"22\",\"v\":\"音乐\"},{\"k\":\"23\",\"v\":\"西部\"},{\"k\":\"24\",\"v\":\"武侠\"},{\"k\":\"25\",\"v\":\"恐怖\"}]," +
@@ -106,29 +104,30 @@ public class Jianpian extends Spider {
                 sortVal = extend.getOrDefault("sort", "update");
             }
             String url;
-            if(tid.equals("67")){
-                // 短剧接口 category_sub_id
+            if (tid.equals("67")) {
+                // 短剧接口
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl).append("/api/dyTag/hand_data?category_id=").append(tid);
                 if (!cidVal.isEmpty()) sb.append("&category_sub_id=").append(cidVal);
-                // 短剧无rating，过滤掉
                 if (!sortVal.isEmpty() && !sortVal.equals("update") && !sortVal.equals("rating")) {
                     sb.append("&sort=").append(sortVal);
                 }
                 url = sb.toString();
-            }else{
-                // Netflix、纪录片
-                url = siteUrl + String.format("/api/dyTag/list?category_id=%s&page=%s", tid, pg);
-            }
-            Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
-            if(tid.equals("67")){
-                for (String key : resp.getDataObj().keySet()){
-                    List<Data> arr = gson.fromJson(resp.getDataObj().getAsJsonArray(key), com.google.gson.reflect.TypeToken.getParameterized(List.class, Data.class).getType());
-                    for(Data data : arr){
+                // 短剧独立解析，不依赖Resp.getDataObj()
+                String jsonStr = OkHttp.string(url, getHeader());
+                JsonObject root = JsonParser.parseString(jsonStr).getAsJsonObject();
+                JsonObject dataRoot = root.getAsJsonObject("data");
+                for (String key : dataRoot.keySet()) {
+                    JsonArray arr = dataRoot.getAsJsonArray(key);
+                    List<Data> dataList = gson.fromJson(arr, com.google.gson.reflect.TypeToken.getParameterized(List.class, Data.class).getType());
+                    for (Data data : dataList) {
                         list.add(data.vodShort(imgDomain));
                     }
                 }
-            }else{
+            } else {
+                // Netflix、纪录片
+                url = siteUrl + String.format("/api/dyTag/list?category_id=%s&page=%s", tid, pg);
+                Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
                 for (Data data : resp.getData()) {
                     if (data.getDataList() != null) {
                         for (Data dataList : data.getDataList()) {
