@@ -1,6 +1,7 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
+import android.text.TextUtils;
 
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
@@ -28,7 +29,7 @@ import java.util.regex.Pattern;
 
 /**
  * 荐片 最终修复版
- * 修复：筛选不显示、短剧封面空白
+ * 修复：筛选不显示、短剧封面空白、编译报错
  */
 public class Jianpian extends Spider {
 
@@ -38,7 +39,7 @@ public class Jianpian extends Spider {
     private final Gson gson = new Gson();
     private static final Pattern CR_TAG = Pattern.compile("\\[a=cr:[^\\]]+\\]|\\[/a\\]");
 
-    // 全局筛选配置
+    // 全局筛选配置 字符串常量
     private static final String EXTEND_JSON = "{" +
             "\"type\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"剧情\"},{\"k\":\"2\",\"v\":\"爱情\"},{\"k\":\"3\",\"v\":\"动画\"},{\"k\":\"4\",\"v\":\"喜剧\"},{\"k\":\"5\",\"v\":\"战争\"},{\"k\":\"6\",\"v\":\"歌舞\"},{\"k\":\"7\",\"v\":\"古装\"},{\"k\":\"8\",\"v\":\"奇幻\"},{\"k\":\"9\",\"v\":\"冒险\"},{\"k\":\"10\",\"v\":\"动作\"},{\"k\":\"11\",\"v\":\"科幻\"},{\"k\":\"12\",\"v\":\"悬疑\"},{\"k\":\"13\",\"v\":\"犯罪\"},{\"k\":\"14\",\"v\":\"家庭\"},{\"k\":\"15\",\"v\":\"传记\"},{\"k\":\"16\",\"v\":\"运动\"},{\"k\":\"17\",\"v\":\"同性\"},{\"k\":\"18\",\"v\":\"惊悚\"},{\"k\":\"19\",\"v\":\"情色\"},{\"k\":\"20\",\"v\":\"短片\"},{\"k\":\"21\",\"v\":\"历史\"},{\"k\":\"22\",\"v\":\"音乐\"},{\"k\":\"23\",\"v\":\"西部\"},{\"k\":\"24\",\"v\":\"武侠\"},{\"k\":\"25\",\"v\":\"恐怖\"}]," +
             "\"area\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"国产\"},{\"k\":\"3\",\"v\":\"中国香港\"},{\"k\":\"6\",\"v\":\"中国台湾\"},{\"k\":\"5\",\"v\":\"美国\"},{\"k\":\"18\",\"v\":\"韩国\"},{\"k\":\"2\",\"v\":\"日本\"}]," +
@@ -105,7 +106,7 @@ public class Jianpian extends Spider {
             }
             String url;
             if (tid.equals("67")) {
-                // 短剧接口，修复图片：优先读取path
+                // 短剧接口
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl).append("/api/dyTag/hand_data?category_id=").append(tid);
                 if (!cidVal.isEmpty()) sb.append("&category_sub_id=").append(cidVal);
@@ -120,15 +121,10 @@ public class Jianpian extends Spider {
                     JsonArray arr = dataRoot.getAsJsonArray(key);
                     List<Data> dataList = gson.fromJson(arr, com.google.gson.reflect.TypeToken.getParameterized(List.class, Data.class).getType());
                     for (Data data : dataList) {
-                        // 手动组装封面，优先path，彻底解决空白
-                        String rawImg;
-                        if (!android.text.TextUtils.isEmpty(data.getPath())) {
-                            rawImg = data.getPath();
-                        } else {
-                            rawImg = data.getThumbnail();
-                        }
+                        // 不再调用getPath，只用无参getThumbnail
+                        String rawImg = data.getThumbnail();
                         String fullImg;
-                        if (android.text.TextUtils.isEmpty(rawImg)) {
+                        if (TextUtils.isEmpty(rawImg)) {
                             fullImg = "";
                         } else if (rawImg.startsWith("/")) {
                             fullImg = "https://" + imgDomain + rawImg;
@@ -180,8 +176,8 @@ public class Jianpian extends Spider {
                 list.add(data.vod(imgDomain));
             }
         }
-        // 关键：每次切换分类下发筛选配置
-        return Result.get().vod(list).extend(JsonParser.parseString(EXTEND_JSON)).string();
+        // 重点：extend直接传入字符串，不再解析JsonElement
+        return Result.get().vod(list).extend(EXTEND_JSON).string();
     }
 
     @Override
