@@ -23,7 +23,7 @@ import java.util.regex.Pattern
  * @author lushunming
  */
 class SeedHub : Cloud() {
-    private val siteUrl = "https://seedhub.pro"
+    private val siteUrl = "https://seeduck.cc"
     private val regexCategory: Pattern = Pattern.compile("/vodtype/(\\w+).html")
     private val regexPageTotal: Pattern = Pattern.compile("\\$\\(\"\\.mac_total\"\\)\\.text\\('(\\d+)'\\);")
 
