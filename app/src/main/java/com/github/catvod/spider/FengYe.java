@@ -18,38 +18,33 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+// JDK原生Base64，无自定义工具类，规避版权
 import java.util.Base64;
 
 public class FengYe extends Spider {
-    private final String host = "https://www.cd-zj.com";
+    // 站点主域名，换站只改此处
+    private final String host = "https://www.tjtcdl.com";
     private OkHttpClient client;
     private Headers headers;
 
-    private final Pattern vidPat = Pattern.compile("/detail/(\\d+)\\.html");
-    private final Pattern pagePat = Pattern.compile("/page/(\\d+)\\.html");
-
     @Override
     public void init(Context context, String extend) {
+        // 初始化OkHttp客户端、请求头
         client = new OkHttpClient.Builder()
                 .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
-                .followRedirects(true)
-                .followSslRedirects(true)
                 .build();
-
         headers = new Headers.Builder()
-                .add("User-Agent", "Mozilla/5.0 (Linux; Android 16; V2364A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36")
-                .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-                .add("Accept-Language", "zh-CN,zh;q=0.9")
+                .add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
                 .add("Referer", host + "/")
+                .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+                .add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .build();
     }
 
-    private JSONObject getClassMap(String cid, String name) throws Exception {
-        return new JSONObject().put("type_id", cid).put("type_name", name);
-    }
-
+    // GET请求封装
     private String get(String url) throws IOException {
         Request request = new Request.Builder()
                 .url(url)
@@ -62,6 +57,7 @@ public class FengYe extends Spider {
         }
     }
 
+    // POST表单请求
     private String post(String url, Map<String, String> params, Headers headerExt) throws IOException {
         FormBody.Builder form = new FormBody.Builder(StandardCharsets.UTF_8);
         for (Map.Entry<String, String> entry : params.entrySet()) {
@@ -69,7 +65,6 @@ public class FengYe extends Spider {
         }
         Headers.Builder hd = headers.newBuilder();
         if (headerExt != null) hd.addAll(headerExt);
-
         Request request = new Request.Builder()
                 .url(url)
                 .headers(hd.build())
@@ -81,28 +76,15 @@ public class FengYe extends Spider {
         }
     }
 
-    private String getWithHeader(String url, Headers hd) throws IOException {
-        Request req = new Request.Builder()
-                .url(url)
-                .headers(hd)
-                .get()
-                .build();
-        try (Response resp = client.newCall(req).execute()) {
-            return resp.body() == null ? "" : resp.body().string();
-        }
-    }
-
+    // 首页分类、筛选
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
-        classes.put(getClassMap("qq", "腾讯VIP精选"));
-        classes.put(getClassMap("yk", "优酷VIP精选"));
-        classes.put(getClassMap("bli", "B站VIP精选"));
-        classes.put(getClassMap("1", "电影"));
-        classes.put(getClassMap("2", "电视剧"));
-        classes.put(getClassMap("4", "动漫"));
-        classes.put(getClassMap("3", "综艺"));
-        classes.put(getClassMap("5", "短剧"));
+        classes.put(new JSONObject().put("type_id", "1").put("type_name", "电影"));
+        classes.put(new JSONObject().put("type_id", "2").put("type_name", "电视剧"));
+        classes.put(new JSONObject().put("type_id", "4").put("type_name", "动漫"));
+        classes.put(new JSONObject().put("type_id", "3").put("type_name", "综艺"));
+        classes.put(new JSONObject().put("type_id", "5").put("type_name", "热门短剧"));
 
         JSONObject filterDict = new JSONObject();
         JSONArray years = new JSONArray();
@@ -114,33 +96,19 @@ public class FengYe extends Spider {
         orders.put(new JSONObject().put("n", "按最热").put("v", "hits"));
         orders.put(new JSONObject().put("n", "按评分").put("v", "score"));
 
-        String[] movieClass = {"动作", "喜剧", "爱情", "科幻", "恐怖", "剧情", "战争", "警匪",
-                "犯罪", "动画", "奇幻", "武侠", "冒险", "枪战", "悬疑", "惊悚",
-                "经典", "青春", "文艺", "微电影", "古装", "历史", "运动", "农村",
-                "儿童", "网络电影"};
-        String[] movieArea = {"大陆", "香港", "台湾", "美国", "韩国", "日本", "泰国", "新加坡",
-                "马来西亚", "印度", "英国", "法国", "加拿大", "西班牙", "俄罗斯", "其它"};
-
-        String[] tvClass = {"古装", "战争", "青春偶像", "喜剧", "家庭", "犯罪", "动作", "奇幻",
-                "剧情", "历史", "经典", "乡村", "情景", "商战", "网剧", "其他"};
-        String[] tvArea = {"国产剧", "日韩剧", "海外剧"};
-
-        String[] comicClass = {"情感", "科幻", "热血", "推理", "搞笑", "冒险", "萝莉", "校园",
-                "动作", "机战", "运动", "战争", "少年", "少女", "社会", "原创",
-                "亲子", "益智", "励志", "其他"};
-        String[] comicArea = {"国产动漫", "日韩动漫"};
-
-        String[] showClass = {"选秀", "情感", "访谈", "播报", "旅游", "音乐", "美食",
-                "纪实", "曲艺", "生活", "游戏互动", "财经", "求职"};
-        String[] showArea = {"大陆综艺", "日韩综艺"};
-
-        String[] shortClass = {};
-        String[] shortArea = {};
+        String[] movieClass = {"动作", "喜剧", "爱情", "科幻", "恐怖", "剧情", "战争", "惊悚", "悬疑", "犯罪", "奇幻", "冒险", "动画", "武侠"};
+        String[] movieArea = {"大陆", "香港", "台湾", "美国", "韩国", "日本", "泰国", "新加坡", "马来西亚", "印度", "英国", "法国", "加拿大", "西班牙", "俄罗斯", "其它"};
+        String[] tvClass = {"古装", "战争", "青春偶像", "喜剧", "家庭", "犯罪", "动作", "奇幻", "剧情", "历史", "经典", "乡村", "情景", "商战", "网剧", "其他"};
+        String[] tvArea = {"内地", "韩国", "香港", "台湾", "日本", "美国", "泰国", "英国", "新加坡", "其他"};
+        String[] comicClass = {"科幻", "热血", "推理", "搞笑", "冒险", "萝莉", "校园", "动作", "机战", "运动", "战争", "少年", "少女"};
+        String[] showClass = {"脱口秀", "真人秀", "搞笑", "访谈", "生活", "晚会", "美食", "游戏", "亲子", "旅游", "音乐", "舞蹈"};
+        String[] shortClass = {"女频", "男频", "复仇", "甜宠", "穿越", "逆袭", "战神", "脑洞"};
+        String[] shortArea = {"内地", "其他"};
 
         filterDict.put("1", makeFilter(movieClass, movieArea, years, orders));
         filterDict.put("2", makeFilter(tvClass, tvArea, years, orders));
-        filterDict.put("4", makeFilter(comicClass, comicArea, years, orders));
-        filterDict.put("3", makeFilter(showClass, showArea, years, orders));
+        filterDict.put("4", makeFilter(comicClass, tvArea, years, orders));
+        filterDict.put("3", makeFilter(showClass, tvArea, years, orders));
         filterDict.put("5", makeFilter(shortClass, shortArea, years, orders));
 
         JSONObject res = new JSONObject();
@@ -149,20 +117,18 @@ public class FengYe extends Spider {
         return res.toString();
     }
 
+    // 构造筛选JSON
     private JSONArray makeFilter(String[] cls, String[] area, JSONArray years, JSONArray orders) throws Exception {
         JSONArray arr = new JSONArray();
-        if (cls.length > 0) {
-            JSONArray clsVal = new JSONArray();
-            clsVal.put(new JSONObject().put("n", "全部").put("v", ""));
-            for (String s : cls) clsVal.put(new JSONObject().put("n", s).put("v", s));
-            arr.put(new JSONObject().put("key", "class").put("name", "类型").put("value", clsVal));
-        }
-        if (area.length > 0) {
-            JSONArray areaVal = new JSONArray();
-            areaVal.put(new JSONObject().put("n", "全部").put("v", ""));
-            for (String s : area) areaVal.put(new JSONObject().put("n", s).put("v", s));
-            arr.put(new JSONObject().put("key", "area").put("name", "地区").put("value", areaVal));
-        }
+        JSONArray clsVal = new JSONArray();
+        clsVal.put(new JSONObject().put("n", "全部").put("v", ""));
+        for (String s : cls) clsVal.put(new JSONObject().put("n", s).put("v", s));
+        arr.put(new JSONObject().put("key", "class").put("name", "类型").put("value", clsVal));
+
+        JSONArray areaVal = new JSONArray();
+        areaVal.put(new JSONObject().put("n", "全部").put("v", ""));
+        for (String s : area) areaVal.put(new JSONObject().put("n", s).put("v", s));
+        arr.put(new JSONObject().put("key", "area").put("name", "地区").put("value", areaVal));
         arr.put(new JSONObject().put("key", "year").put("name", "年份").put("value", years));
         arr.put(new JSONObject().put("key", "by").put("name", "排序").put("value", orders));
         return arr;
@@ -170,97 +136,14 @@ public class FengYe extends Spider {
 
     @Override
     public String homeVideoContent() throws Exception {
-        JSONArray list = new JSONArray();
-        try {
-            String html = get(host + "/");
-            Document doc = Jsoup.parse(html);
-            Elements allBlocks = doc.select(".tv4");
-            for (Element block : allBlocks) {
-                Elements items = block.select(".public-list-box");
-                for (Element item : items) {
-                    Element link = item.selectFirst(".public-list-exp");
-                    if (link == null) continue;
-                    String href = link.attr("href");
-                    Matcher m = vidPat.matcher(href);
-                    if (!m.find()) continue;
-                    String vid = m.group(1);
-                    String name = link.attr("title").trim();
-                    Element img = link.selectFirst("img");
-                    String pic = "";
-                    if (img != null) {
-                        pic = img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src");
-                    }
-                    Element noteTag = item.selectFirst(".public-list-prb");
-                    String remark = noteTag != null ? noteTag.text().trim() : "";
-                    JSONObject data = new JSONObject();
-                    data.put("vod_id", vid);
-                    data.put("vod_name", name);
-                    data.put("vod_pic", pic);
-                    data.put("vod_remarks", remark);
-                    list.put(data);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        JSONObject ret = new JSONObject();
-        ret.put("list", list);
-        return ret.toString();
+        JSONObject obj = new JSONObject();
+        obj.put("list", new JSONArray());
+        return obj.toString();
     }
 
+    // 分类分页列表
     @Override
     public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
-        if ("qq".equals(cid) || "yk".equals(cid) || "bli".equals(cid)) {
-            ext.clear();
-            int page = Integer.parseInt(pg);
-            String pageUrl = host + "/label/" + cid + "/page/" + page + ".html";
-            String html = get(pageUrl);
-            Document doc = Jsoup.parse(html);
-            JSONArray list = new JSONArray();
-
-            Elements vodItems = doc.select(".list-vod .public-list-box.public-pic-b");
-            for (Element item : vodItems) {
-                Element link = item.selectFirst(".public-list-exp");
-                if (link == null) continue;
-                String href = link.attr("href");
-                Matcher m = vidPat.matcher(href);
-                if (!m.find()) continue;
-                String vid = m.group(1);
-                String name = link.attr("title").trim();
-                Element img = link.selectFirst("img");
-                String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
-                String remark = item.selectFirst(".public-list-prb") != null ? item.selectFirst(".public-list-prb").text().trim() : "";
-                JSONObject data = new JSONObject();
-                data.put("vod_id", vid);
-                data.put("vod_name", name);
-                data.put("vod_pic", pic);
-                data.put("vod_remarks", remark);
-                list.put(data);
-            }
-
-            boolean hasNext = false;
-            Elements pageLinks = doc.select(".page-info a.page-link:not(.ho)");
-            for (Element a : pageLinks) {
-                String href = a.attr("href");
-                Matcher m = pagePat.matcher(href);
-                if (m.find()) {
-                    int num = Integer.parseInt(m.group(1));
-                    if (num > page) {
-                        hasNext = true;
-                        break;
-                    }
-                }
-            }
-
-            JSONObject ret = new JSONObject();
-            ret.put("list", list);
-            ret.put("page", page);
-            ret.put("pagecount", hasNext ? page + 1 : page);
-            ret.put("limit", vodItems.size());
-            ret.put("total", 9999);
-            return ret.toString();
-        }
-
         int page = Integer.parseInt(pg);
         String area = ext.getOrDefault("area", "");
         String by = ext.getOrDefault("by", "");
@@ -277,14 +160,13 @@ public class FengYe extends Spider {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        String url = String.format("%s/cupfox-list/%s-%s-%s-%s-%s-%s---%s---%s.html",
-                host, cid, area, by, cls, lang, letter, page, year);
+        String url = host + "/cupfox-list/" + cid + "-" + area + "-" + by + "-" + cls + "-" + lang + "-" + letter + "---" + page + "---" + year + ".html";
         JSONArray list = new JSONArray();
         try {
             String html = get(url);
             Document doc = Jsoup.parse(html);
             Elements items = doc.select(".public-list-box");
+            Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
             for (Element item : items) {
                 Element link = item.selectFirst(".public-list-exp");
                 if (link == null) continue;
@@ -319,14 +201,14 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
+    // 影片详情
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String did = ids.get(0);
-        String url = host + "/detail/" + did + ".html";
+        String url = host + "/chabeihu/" + did + ".html";
         String name = "", state = "", actor = "", director = "", year = "", content = "";
         List<String> playFrom = new ArrayList<>();
         List<String> playUrl = new ArrayList<>();
-
         try {
             String html = get(url);
             Document doc = Jsoup.parse(html);
@@ -347,7 +229,6 @@ public class FengYe extends Spider {
                 Element titleTag = doc.selectFirst(".this-desc-title");
                 if (titleTag != null) name = titleTag.text().trim();
             }
-
             Elements sourceTabs = doc.select(".anthology-tab .swiper-slide");
             List<String> sources = new ArrayList<>();
             for (Element s : sourceTabs) {
@@ -356,7 +237,6 @@ public class FengYe extends Spider {
                 if (badge != null) txt = txt.replace(badge.text(), "").trim();
                 sources.add(txt);
             }
-
             Elements boxList = doc.select(".anthology-list-box");
             for (int i = 0; i < boxList.size(); i++) {
                 Element box = boxList.get(i);
@@ -377,7 +257,6 @@ public class FengYe extends Spider {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         JSONObject vod = new JSONObject();
         vod.put("vod_id", did);
         vod.put("vod_name", name);
@@ -395,6 +274,7 @@ public class FengYe extends Spider {
         return res.toString();
     }
 
+    // 播放解析
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         JSONObject ret = new JSONObject();
@@ -409,22 +289,21 @@ public class FengYe extends Spider {
             String durl = playerData.optString("url", "");
             int encrypt = playerData.optInt("encrypt", 0);
             String fromFlag = playerData.optString("from", "");
-
             if (encrypt == 1 || encrypt == 2) {
                 durl = java.net.URLDecoder.decode(durl, "UTF-8");
                 if (encrypt == 2) {
+                    // JDK原生Base64解码，无自定义工具类
                     byte[] decodeBytes = Base64.getDecoder().decode(durl);
                     durl = new String(decodeBytes, StandardCharsets.UTF_8);
                     durl = java.net.URLDecoder.decode(durl, "UTF-8");
                 }
             }
-
             if (durl.startsWith("http") && (durl.contains(".m3u8") || durl.contains(".mp4"))) {
                 ret.put("parse", 0);
                 ret.put("url", durl);
                 return ret.toString();
             }
-
+            // 获取解析接口
             String configJs = get(host + "/static/js/playerconfig.js");
             String parseApi = "";
             if (!TextUtils.isEmpty(fromFlag)) {
@@ -436,9 +315,10 @@ public class FengYe extends Spider {
                 if (apiMatch.find()) parseApi = apiMatch.group(1).replace("\\/", "/");
             }
             if (TextUtils.isEmpty(parseApi)) parseApi = "https://fgsrg.hzqingshan.com/player/?url=";
-
             String iframeUrl = parseApi + durl;
-            Headers iframeHeader = headers.newBuilder().set("Referer", id).build();
+            Headers iframeHeader = headers.newBuilder()
+                    .set("Referer", id)
+                    .build();
             String iframeHtml = getWithHeader(iframeUrl, iframeHeader);
             Document iframeDoc = Jsoup.parse(iframeHtml);
             Element playerDataTag = iframeDoc.selectFirst("#player-data");
@@ -448,11 +328,9 @@ public class FengYe extends Spider {
             }
             String token = playerDataTag.attr("data-te");
             String bt = playerDataTag.attr("data-bt");
-
             java.net.URL parseUrlObj = new java.net.URL(parseApi);
             String apiHost = parseUrlObj.getProtocol() + "://" + parseUrlObj.getHost();
             String apiUrl = apiHost + bt + "mplayer.php";
-
             Map<String, String> postParam = new HashMap<>();
             postParam.put("url", durl);
             postParam.put("token", token);
@@ -465,21 +343,17 @@ public class FengYe extends Spider {
             JSONObject apiJson = new JSONObject(apiResStr);
             String realUrl = apiJson.optString("url", "");
             String urlMode = apiJson.optString("urlmode", "");
-
             if (TextUtils.isEmpty(realUrl) && apiJson.has("data")) {
                 realUrl = apiJson.getJSONObject("data").optString("url", "");
                 urlMode = apiJson.getJSONObject("data").optString("urlmode", "");
             }
-
             if ("1".equals(urlMode)) realUrl = jsDecrypt1(realUrl);
             else if ("2".equals(urlMode)) realUrl = jsDecrypt2(realUrl);
             else if ("3".equals(urlMode)) realUrl = jsDecrypt3(realUrl);
-
             for (int i = 0; i < 3; i++) {
                 if (realUrl.startsWith("WyJ") && realUrl.contains("/")) realUrl = jsDecrypt3(realUrl);
                 else break;
             }
-
             if (!TextUtils.isEmpty(realUrl)) {
                 ret.put("url", realUrl);
                 ret.put("parse", realUrl.contains(".m3u8") || realUrl.contains(".mp4") ? 0 : 1);
@@ -490,18 +364,30 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
+    private String getWithHeader(String url, Headers hd) throws IOException {
+        Request req = new Request.Builder()
+                .url(url)
+                .headers(hd)
+                .get()
+                .build();
+        try (Response resp = client.newCall(req).execute()) {
+            return resp.body() == null ? "" : resp.body().string();
+        }
+    }
+
+    // 解密1：JDK原生Base64，无自定义工具
     private String jsDecrypt1(String data) throws Exception {
         String key = md5("test");
         byte[] decodeBytes = Base64.getDecoder().decode(data);
         byte[] xor = new byte[decodeBytes.length];
         for (int i = 0; i < decodeBytes.length; i++) {
-            byte keyByte = (byte) key.charAt(i % key.length());
-            xor[i] = (byte) (decodeBytes[i] ^ keyByte);
+            xor[i] = (byte) (decodeBytes[i] ^ key.charAt(i % key.length()));
         }
         byte[] secondDecode = Base64.getDecoder().decode(new String(xor));
         return new String(secondDecode, StandardCharsets.UTF_8);
     }
 
+    // 解密2
     private String jsDecrypt2(String data) throws Exception {
         String staticChars = "PXhw7UT1B0a9kQDKZsjIASmOezxYG4CHo5Jyfg2b8FLpEvRr3WtVnlqMidu6cN";
         byte[] decodeBytes = Base64.getDecoder().decode(data);
@@ -516,29 +402,27 @@ public class FengYe extends Spider {
         return sb.toString();
     }
 
+    // 解密3：修复JSONArray.indexOf不存在，改用循环遍历
     private String jsDecrypt3(String data) throws Exception {
         data = fixB64(data);
         String[] parts = data.split("/");
         if (parts.length < 3) return data;
 
+        // 原生Base64解码
         byte[] arr1Bytes = Base64.getDecoder().decode(fixB64(parts[0]));
         JSONArray arr1 = new JSONArray(new String(arr1Bytes, StandardCharsets.UTF_8));
 
         byte[] arr2Bytes = Base64.getDecoder().decode(fixB64(parts[1]));
         JSONArray arr2 = new JSONArray(new String(arr2Bytes, StandardCharsets.UTF_8));
 
-        // 修复点：先截取数组再join，消除for-each类型报错
-        String[] subParts = new String[parts.length - 2];
-        System.arraycopy(parts, 2, subParts, 0, parts.length - 2);
-        String cipherRaw = String.join("/", subParts);
-
+        String cipherRaw = String.join("/", Arrays.copyOfRange(parts, 2, parts.length));
         byte[] cipherBytes = Base64.getDecoder().decode(fixB64(cipherRaw));
         String cipher = new String(cipherBytes, StandardCharsets.UTF_8);
 
         StringBuilder sb = new StringBuilder();
-        char[] charArr = cipher.toCharArray();
-        for (char c : charArr) {
+        for (char c : cipher.toCharArray()) {
             int idx = -1;
+            // 替换不存在的indexOf，手动循环匹配，消除编译报错
             for (int k = 0; k < arr2.length(); k++) {
                 if (arr2.getString(k).equals(String.valueOf(c))) {
                     idx = k;
@@ -550,12 +434,14 @@ public class FengYe extends Spider {
         return sb.toString();
     }
 
+    // 补全Base64填充等号
     private String fixB64(String s) {
         int mod = s.length() % 4;
         if (mod != 0) s += "====".substring(0, 4 - mod);
         return s;
     }
 
+    // MD5加密，JDK原生无第三方工具
     private String md5(String text) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
         byte[] bytes = md.digest(text.getBytes(StandardCharsets.UTF_8));
@@ -564,6 +450,7 @@ public class FengYe extends Spider {
         return sb.toString();
     }
 
+    // 搜索
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         return searchContent(key, quick, "1");
@@ -572,31 +459,25 @@ public class FengYe extends Spider {
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         JSONArray list = new JSONArray();
-        int pageNum = Integer.parseInt(pg);
-        String encodeWord = URLEncoder.encode(key, StandardCharsets.UTF_8.name());
-        String searchUrl = String.format("%s/cupfox-search/%s----------%s---.html", host, encodeWord, pageNum);
-
+        int page = Integer.parseInt(pg);
         try {
-            Headers.Builder searchHeader = headers.newBuilder();
-            searchHeader.add("X-Requested-With", "XMLHttpRequest");
-            searchHeader.add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-            String html = getWithHeader(searchUrl, searchHeader.build());
+            String searchUrl = host + "/cupfox-search/-------------.html";
+            Map<String, String> param = new HashMap<>();
+            param.put("wd", key);
+            Headers.Builder hd = headers.newBuilder();
+            String html = post(searchUrl, param, hd.build());
             Document doc = Jsoup.parse(html);
-
+            Pattern vidPat = Pattern.compile("/chabeihu/(\\d+)\\.html");
             Elements items = doc.select(".public-list-box");
             for (Element item : items) {
                 Element link = item.selectFirst(".public-list-exp");
                 if (link == null) continue;
-                String href = link.attr("href");
-                Matcher m = vidPat.matcher(href);
+                Matcher m = vidPat.matcher(link.attr("href"));
                 if (!m.find()) continue;
                 String vid = m.group(1);
                 String name = link.attr("title").trim();
                 Element img = link.selectFirst("img");
-                String pic = "";
-                if (img != null) {
-                    pic = img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src");
-                }
+                String pic = img != null ? (img.hasAttr("data-src") ? img.attr("data-src") : img.attr("src")) : "";
                 Element note = item.selectFirst(".public-list-prb");
                 String remark = note != null ? note.text().trim() : "";
                 JSONObject obj = new JSONObject();
@@ -609,13 +490,12 @@ public class FengYe extends Spider {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         JSONObject ret = new JSONObject();
         ret.put("list", list);
-        ret.put("page", pageNum);
-        ret.put("pagecount", pageNum + 1);
+        ret.put("page", page);
+        ret.put("pagecount", 1);
         ret.put("limit", list.length());
-        ret.put("total", 9999);
+        ret.put("total", list.length());
         return ret.toString();
     }
 }
