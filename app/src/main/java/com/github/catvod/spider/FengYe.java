@@ -36,14 +36,12 @@ public class FengYe extends Spider {
                 .retryOnConnectionFailure(true)
                 .followRedirects(true)
                 .followSslRedirects(true)
-                .cookieJar(new com.github.catvod.net.OkCookieJar())
                 .build();
 
         headers = new Headers.Builder()
                 .add("User-Agent", "Mozilla/5.0 (Linux; Android 16; V2364A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36")
                 .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
                 .add("Accept-Language", "zh-CN,zh;q=0.9")
-                .add("Accept-Encoding", "gzip, deflate, br")
                 .add("Referer", host + "/")
                 .build();
     }
@@ -162,7 +160,7 @@ public class FengYe extends Spider {
         if (area.length > 0) {
             JSONArray areaVal = new JSONArray();
             areaVal.put(new JSONObject().put("n", "全部").put("v", ""));
-            for (String s : area) areaVal.put(new JSONObject().put("n", s).put("v", s));
+            for (String s : areaVal) areaVal.put(new JSONObject().put("n", s).put("v", s));
             arr.put(new JSONObject().put("key", "area").put("name", "地区").put("value", areaVal));
         }
         arr.put(new JSONObject().put("key", "year").put("name", "年份").put("value", years));
