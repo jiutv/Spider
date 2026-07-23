@@ -28,8 +28,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 终极修复版本
- * 修复点：短剧封面空白；无编译错误
+ * 荐片 修复短剧封面最终版
+ * 适配接口 cover_image 封面字段
  */
 public class Jianpian extends Spider {
 
@@ -39,7 +39,6 @@ public class Jianpian extends Spider {
     private final Gson gson = new Gson();
     private static final Pattern CR_TAG = Pattern.compile("\\[a=cr:[^\\]]+\\]|\\[/a\\]");
 
-    // 全局筛选配置
     private static final String EXTEND_JSON = "{" +
             "\"type\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"剧情\"},{\"k\":\"2\",\"v\":\"爱情\"},{\"k\":\"3\",\"v\":\"动画\"},{\"k\":\"4\",\"v\":\"喜剧\"},{\"k\":\"5\",\"v\":\"战争\"},{\"k\":\"6\",\"v\":\"歌舞\"},{\"k\":\"7\",\"v\":\"古装\"},{\"k\":\"8\",\"v\":\"奇幻\"},{\"k\":\"9\",\"v\":\"冒险\"},{\"k\":\"10\",\"v\":\"动作\"},{\"k\":\"11\",\"v\":\"科幻\"},{\"k\":\"12\",\"v\":\"悬疑\"},{\"k\":\"13\",\"v\":\"犯罪\"},{\"k\":\"14\",\"v\":\"家庭\"},{\"k\":\"15\",\"v\":\"传记\"},{\"k\":\"16\",\"v\":\"运动\"},{\"k\":\"17\",\"v\":\"同性\"},{\"k\":\"18\",\"v\":\"惊悚\"},{\"k\":\"19\",\"v\":\"情色\"},{\"k\":\"20\",\"v\":\"短片\"},{\"k\":\"21\",\"v\":\"历史\"},{\"k\":\"22\",\"v\":\"音乐\"},{\"k\":\"23\",\"v\":\"西部\"},{\"k\":\"24\",\"v\":\"武侠\"},{\"k\":\"25\",\"v\":\"恐怖\"}]," +
             "\"area\":[{\"k\":\"\",\"v\":\"全部\"},{\"k\":\"1\",\"v\":\"国产\"},{\"k\":\"3\",\"v\":\"中国香港\"},{\"k\":\"6\",\"v\":\"中国台湾\"},{\"k\":\"5\",\"v\":\"美国\"},{\"k\":\"18\",\"v\":\"韩国\"},{\"k\":\"2\",\"v\":\"日本\"}]," +
@@ -96,7 +95,6 @@ public class Jianpian extends Spider {
         if (tid.endsWith("/{pg}")) return searchContent(tid.split("/")[0], pg);
         List<Vod> list = new ArrayList<>();
 
-        // Netflix、纪录片、短剧 dyTag 系列
         if (tid.equals("50") || tid.equals("99") || tid.equals("67")) {
             String cidVal = "";
             String sortVal = "update";
@@ -106,7 +104,6 @@ public class Jianpian extends Spider {
             }
             String url;
             if (tid.equals("67")) {
-                // ==========短剧区块：直接解析原始JSON，绕过Gson别名BUG==========
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl).append("/api/dyTag/hand_data?category_id=").append(tid);
                 if (!cidVal.isEmpty()) sb.append("&category_sub_id=").append(cidVal);
@@ -124,14 +121,11 @@ public class Jianpian extends Spider {
                         String id = itemObj.has("id") && !itemObj.get("id").isJsonNull() ? itemObj.get("id").getAsString() : "";
                         String title = itemObj.has("title") && !itemObj.get("title").isJsonNull() ? itemObj.get("title").getAsString() : "";
                         String mask = itemObj.has("mask") && !itemObj.get("mask").isJsonNull() ? itemObj.get("mask").getAsString() : "";
-                        // 优先读取path字段（短剧接口真实图片字段）
+                        // 短剧封面字段 cover_image
                         String rawImg = "";
-                        if (itemObj.has("path") && !itemObj.get("path").isJsonNull()) {
-                            rawImg = itemObj.get("path").getAsString();
-                        } else if (itemObj.has("thumbnail") && !itemObj.get("thumbnail").isJsonNull()) {
-                            rawImg = itemObj.get("thumbnail").getAsString();
+                        if (itemObj.has("cover_image") && !itemObj.get("cover_image").isJsonNull()) {
+                            rawImg = itemObj.get("cover_image").getAsString();
                         }
-                        // 自动拼接域名、处理斜杠
                         String fullImg;
                         if (TextUtils.isEmpty(rawImg)) {
                             fullImg = "";
@@ -145,7 +139,6 @@ public class Jianpian extends Spider {
                     }
                 }
             } else {
-                // Netflix、纪录片
                 url = siteUrl + String.format("/api/dyTag/list?category_id=%s&page=%s", tid, pg);
                 Resp resp = Resp.objectFrom(OkHttp.string(url, getHeader()));
                 for (Data data : resp.getData()) {
@@ -169,7 +162,6 @@ public class Jianpian extends Spider {
                 cidVal = extend.getOrDefault("category_id", "");
                 sortVal = extend.getOrDefault("sort", "update");
             }
-            // 电影/电视剧/动漫/综艺 标准请求
             StringBuilder urlSb = new StringBuilder();
             urlSb.append(siteUrl).append("/api/crumb/list?fcate_pid=").append(tid);
             urlSb.append("&category_id=").append(cidVal);
