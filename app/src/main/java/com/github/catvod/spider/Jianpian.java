@@ -28,8 +28,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 荐片 稳定可编译版本
- * 修复：短剧封面空白；移除不存在的extend(String)方法
+ * 荐片 终极修复版本
+ * 修复点：短剧封面空白；无编译错误
  */
 public class Jianpian extends Spider {
 
@@ -106,7 +106,7 @@ public class Jianpian extends Spider {
             }
             String url;
             if (tid.equals("67")) {
-                // 短剧接口，修复图片
+                // ==========短剧区块：直接解析原始JSON，绕过Gson别名BUG==========
                 StringBuilder sb = new StringBuilder();
                 sb.append(siteUrl).append("/api/dyTag/hand_data?category_id=").append(tid);
                 if (!cidVal.isEmpty()) sb.append("&category_sub_id=").append(cidVal);
@@ -119,10 +119,19 @@ public class Jianpian extends Spider {
                 JsonObject dataRoot = root.getAsJsonObject("data");
                 for (String key : dataRoot.keySet()) {
                     JsonArray arr = dataRoot.getAsJsonArray(key);
-                    List<Data> dataList = gson.fromJson(arr, com.google.gson.reflect.TypeToken.getParameterized(List.class, Data.class).getType());
-                    for (Data data : dataList) {
-                        // 手动组装封面
-                        String rawImg = data.getThumbnail();
+                    for (int i = 0; i < arr.size(); i++) {
+                        JsonObject itemObj = arr.get(i).getAsJsonObject();
+                        String id = itemObj.has("id") && !itemObj.get("id").isJsonNull() ? itemObj.get("id").getAsString() : "";
+                        String title = itemObj.has("title") && !itemObj.get("title").isJsonNull() ? itemObj.get("title").getAsString() : "";
+                        String mask = itemObj.has("mask") && !itemObj.get("mask").isJsonNull() ? itemObj.get("mask").getAsString() : "";
+                        // 优先读取path字段（短剧接口真实图片字段）
+                        String rawImg = "";
+                        if (itemObj.has("path") && !itemObj.get("path").isJsonNull()) {
+                            rawImg = itemObj.get("path").getAsString();
+                        } else if (itemObj.has("thumbnail") && !itemObj.get("thumbnail").isJsonNull()) {
+                            rawImg = itemObj.get("thumbnail").getAsString();
+                        }
+                        // 自动拼接域名、处理斜杠
                         String fullImg;
                         if (TextUtils.isEmpty(rawImg)) {
                             fullImg = "";
@@ -131,7 +140,7 @@ public class Jianpian extends Spider {
                         } else {
                             fullImg = "https://" + imgDomain + "/" + rawImg;
                         }
-                        Vod vodItem = new Vod(data.getId(), data.getTitle(), fullImg, data.getMask());
+                        Vod vodItem = new Vod(id, title, fullImg, mask);
                         list.add(vodItem);
                     }
                 }
@@ -176,7 +185,6 @@ public class Jianpian extends Spider {
                 list.add(data.vod(imgDomain));
             }
         }
-        // 移除.extend() 解决编译报错
         return Result.get().vod(list).string();
     }
 
