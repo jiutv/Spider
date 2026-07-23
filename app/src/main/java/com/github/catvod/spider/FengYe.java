@@ -160,7 +160,7 @@ public class FengYe extends Spider {
         if (area.length > 0) {
             JSONArray areaVal = new JSONArray();
             areaVal.put(new JSONObject().put("n", "全部").put("v", ""));
-            for (String s : areaVal) areaVal.put(new JSONObject().put("n", s).put("v", s));
+            for (String s : area) areaVal.put(new JSONObject().put("n", s).put("v", s));
             arr.put(new JSONObject().put("key", "area").put("name", "地区").put("value", areaVal));
         }
         arr.put(new JSONObject().put("key", "year").put("name", "年份").put("value", years));
@@ -527,12 +527,17 @@ public class FengYe extends Spider {
         byte[] arr2Bytes = Base64.getDecoder().decode(fixB64(parts[1]));
         JSONArray arr2 = new JSONArray(new String(arr2Bytes, StandardCharsets.UTF_8));
 
-        String cipherRaw = String.join("/", Arrays.copyOfRange(parts, 2, parts.length));
+        // 修复点：先截取数组再join，消除for-each类型报错
+        String[] subParts = new String[parts.length - 2];
+        System.arraycopy(parts, 2, subParts, 0, parts.length - 2);
+        String cipherRaw = String.join("/", subParts);
+
         byte[] cipherBytes = Base64.getDecoder().decode(fixB64(cipherRaw));
         String cipher = new String(cipherBytes, StandardCharsets.UTF_8);
 
         StringBuilder sb = new StringBuilder();
-        for (char c : cipher.toCharArray()) {
+        char[] charArr = cipher.toCharArray();
+        for (char c : charArr) {
             int idx = -1;
             for (int k = 0; k < arr2.length(); k++) {
                 if (arr2.getString(k).equals(String.valueOf(c))) {
