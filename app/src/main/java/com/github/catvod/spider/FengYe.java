@@ -25,6 +25,9 @@ import java.util.Base64;
 /**
  * 茶杯狐采集爬虫 枫叶模板
  * 站点：https://www.tjtcdl.com
+ *发布域名https://www.vip1949.com/
+ *备用域名zzztool.com
+ *备用发布域名vip1949.info
  * 频道CID对应：
  * 1=电影  2=电视剧  3=综艺  4=动漫  5=短剧
  * qq/yk/bli = 腾讯/优酷/B站VIP精选（无筛选，独立分页路径）
@@ -32,7 +35,7 @@ import java.util.Base64;
 public class FengYe extends Spider {
     // ====================== 全局基础配置 ======================
     // 站点主域名，换站只需要修改此处
-    private final String host = "https://www.tjtcdl.com";
+    private final String host = "https://www.cd-zj.com";
     // OkHttp请求客户端
     private OkHttpClient client;
     // 全局请求头，所有GET/POST共用
