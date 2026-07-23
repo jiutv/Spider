@@ -63,12 +63,12 @@ public class FengYe extends Spider {
                 .followSslRedirects(true)      // 跟随HTTPS重定向
                 .build();
 
-        // 通用请求头，模拟手机浏览器
+        // ============ 已替换为你抓包的手机WV请求头，其余全部原样 ============
         headers = new Headers.Builder()
-                .add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
-                .add("Referer", host + "/") // 来路域名防拦截
-                .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-                .add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .add("User-Agent", "Mozilla/5.0 (Linux; Android 16; V2364A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36")
+                .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+                .add("Accept-Language", "zh-CN,zh;q=0.9")
+                .add("Referer", host + "/")
                 .build();
     }
 
@@ -336,7 +336,7 @@ public class FengYe extends Spider {
             Document doc = Jsoup.parse(html);
             JSONArray list = new JSONArray();
 
-            // VIP页面影片容器选择器 .list-vod .public-list-box.public-pic-b
+            // VIP页面影片容器选择器【保留原始 .list-vod 不作修改】
             Elements vodItems = doc.select(".list-vod .public-list-box.public-pic-b");
             for (Element item : vodItems) {
                 Element link = item.selectFirst(".public-list-exp");
