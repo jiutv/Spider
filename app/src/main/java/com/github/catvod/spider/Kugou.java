@@ -16,18 +16,24 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Kugou extends Spider {
 
+    // 正则匹配页面内歌曲hash
+    private static final Pattern HASH_PATTERN = Pattern.compile("\"hash\":\"([0-9A-F]+)\"");
+
+    // 请求头
     private Map<String, String> getHeader() {
         Map<String, String> header = new HashMap<>();
         header.put("User-Agent", Util.CHROME);
+        header.put("Cookie", "kg_mid=8BE5438F72ED7681652BAAFFE72980C4");
         return header;
     }
 
@@ -78,11 +84,13 @@ public class Kugou extends Spider {
         Elements playlist = doc.select(".pc_temp_songlist ul li");
         List<String> vodItems = new ArrayList<>();
         for (Element item : playlist) {
-            String songName = item.select("a.pc_temp_songname").text().trim();
-            if (!TextUtils.isEmpty(songName)) {
-                // 选集格式：歌名$歌名，播放时把名称传给player
-                vodItems.add(songName + "$" + songName);
-            }
+            Element aTag = item.selectFirst("a.pc_temp_songname");
+            if (aTag == null) continue;
+            String songName = aTag.text().trim();
+            String songPageUrl = aTag.attr("href");
+            if (TextUtils.isEmpty(songName) || TextUtils.isEmpty(songPageUrl)) continue;
+            // 选集格式：歌名$单曲网页地址
+            vodItems.add(songName + "$" + songPageUrl);
         }
         String title = doc.select(".pc_temp_title h3").text().trim();
         String remark = doc.select(".rank_update").text().trim();
@@ -97,21 +105,23 @@ public class Kugou extends Spider {
     }
 
     @Override
-    public String playerContent(String flag, String songName, List<String> vipFlags) throws Exception {
-        if (TextUtils.isEmpty(songName)) throw new Exception("歌曲名称为空");
-        String keyword = URLEncoder.encode(songName, "UTF-8");
-        // meting api 酷狗音源搜索
-        String searchApi = String.format("https://api.injahow.cn/meting/api?server=kg&type=search&keywords=%s", keyword);
-        String response = OkHttp.string(searchApi, getHeader());
-        JSONObject json = new JSONObject(response);
-        JSONArray data = json.getJSONArray("data");
-        if (data.length() == 0) throw new Exception("未找到音源");
-
-        JSONObject track = data.getJSONObject(0);
-        String audioUrl = track.optString("url");
-        if (TextUtils.isEmpty(audioUrl)) throw new Exception("暂无试听资源");
-
-        // 返回真实音频直链，TVBox播放器直接解码播放
+    public String playerContent(String flag, String data, List<String> vipFlags) throws Exception {
+        String[] arr = data.split("\\$");
+        if (arr.length < 2) throw new Exception("歌曲地址缺失");
+        String songUrl = arr[1];
+        // 访问单曲播放页面，提取hash
+        String html = OkHttp.string(songUrl, getHeader());
+        Matcher matcher = HASH_PATTERN.matcher(html);
+        if (!matcher.find()) throw new Exception("无法获取歌曲Hash");
+        String hash = matcher.group(1);
+        // 调用酷狗网页播放接口
+        String apiUrl = String.format("https://wwwapi.kugou.com/yy/index.php?r=play/getdata&hash=%s", hash);
+        String apiResp = OkHttp.string(apiUrl, getHeader());
+        JSONObject json = new JSONObject(apiResp);
+        JSONObject dataObj = json.getJSONObject("data");
+        String audioUrl = dataObj.optString("play_url");
+        if (TextUtils.isEmpty(audioUrl)) throw new Exception("暂无试听音源");
+        // 返回音频直链给TVBox播放器
         return Result.get()
                 .url(audioUrl)
                 .header(getHeader())
