@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
 
 public class ChangZhang extends Spider {
 
-    private String siteUrl = "https://www.czys.pro";
+    private String siteUrl = "https://www.4kcz.com";
 
     @Override
     public void init(Context context, String extend) throws Exception {
