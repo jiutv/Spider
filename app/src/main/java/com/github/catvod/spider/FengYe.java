@@ -17,16 +17,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Base64;
 
 /**
- * 茶杯狐 cd-zj 专用爬虫
+ * 茶杯狐 cd-zj 专用爬虫 修复编译错误版本
  * 站点：https://www.cd-zj.com
  * 分类ID规则：qq/yk/bli=平台精选，1电影 2电视剧 4动漫 3综艺 5短剧
  */
 public class FengYe extends Spider {
     // ======================【站点配置 cd-zj】======================
-    private static final String HOST = "https://www.cd-zj.com";
+    private static final String DEFAULT_HOST = "https://www.cd-zj.com";
+    private String HOST = DEFAULT_HOST; // 移除final，运行时可修改
     // 详情页正则 /detail/数字.html
     private static final Pattern VID_PAT = Pattern.compile("/detail/(\\d+)\\.html");
     // 分页page正则 pg=数字
@@ -43,9 +43,7 @@ public class FengYe extends Spider {
     public void init(Context context, String extend) {
         // ext支持自定义站点域名
         if (!TextUtils.isEmpty(extend) && extend.startsWith("http")) {
-            try {
-                HOST = extend;
-            }catch (Exception ignored){}
+            HOST = extend;
         }
         client = new OkHttpClient.Builder()
                 .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -400,7 +398,7 @@ public class FengYe extends Spider {
                 .add("Referer", HOST + "/")
                 .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                 .add("Accept-Language", "zh-CN,zh;q=0.9");
-        if (headerExt != null) hd.addAll(header.build());
+        if (headerExt != null) hd.addAll(headerExt.build());
         Request req = new Request.Builder()
                 .url(url)
                 .headers(hd.build())
