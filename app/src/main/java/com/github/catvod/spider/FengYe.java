@@ -19,29 +19,47 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 茶杯狐 cd-zj 专用爬虫 修复编译错误版本
- * 站点：https://www.cd-zj.com
- * 分类ID规则：qq/yk/bli=平台精选，1电影 2电视剧 4动漫 3综艺 5短剧
+ * 茶杯狐 cd-zj.com
+ * 修复全部编译错误 + 使用你指定的m95c请求头
  */
 public class FengYe extends Spider {
-    // ======================【站点配置 cd-zj】======================
     private static final String DEFAULT_HOST = "https://www.cd-zj.com";
-    private String HOST = DEFAULT_HOST; // 移除final，运行时可修改
-    // 详情页正则 /detail/数字.html
+    private String HOST = DEFAULT_HOST;
     private static final Pattern VID_PAT = Pattern.compile("/detail/(\\d+)\\.html");
-    // 分页page正则 pg=数字
     private static final Pattern PAGE_PAT = Pattern.compile("pg=(\\d+)");
-    // 分集是否倒序
     private static final boolean REVERSE_EPISODE = true;
-    // 分隔符
-    private static final String SEP = "/";
-    // ======================================================================
 
     private OkHttpClient client;
 
+    // 你提供的请求头构造方法
+    private HashMap<String, String> m95c(String str) {
+        HashMap<String, String> map = new HashMap<>();
+        map.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        map.put("Referer", m100j(str));
+        map.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+        map.put("Accept-Language", "zh-CN,zh;q=0.9");
+        return map;
+    }
+
+    // map转为okhttp Headers
+    private Headers toHeaders(HashMap<String, String> headerMap) {
+        Headers.Builder builder = new Headers.Builder();
+        for (Map.Entry<String, String> entry : headerMap.entrySet()) {
+            builder.add(entry.getKey(), entry.getValue());
+        }
+        return builder.build();
+    }
+
+    private static String m100j(String str) {
+        if (TextUtils.isEmpty(str)) return str;
+        while (str.endsWith("|")) {
+            str = str.substring(0, str.length() - 1);
+        }
+        return str;
+    }
+
     @Override
     public void init(Context context, String extend) {
-        // ext支持自定义站点域名
         if (!TextUtils.isEmpty(extend) && extend.startsWith("http")) {
             HOST = extend;
         }
@@ -65,7 +83,6 @@ public class FengYe extends Spider {
                 .build();
     }
 
-    // 拼接绝对路径
     private String absUrl(String url) {
         if (TextUtils.isEmpty(url)) return "";
         if (url.startsWith("http")) return url;
@@ -77,20 +94,11 @@ public class FengYe extends Spider {
         return new JSONObject().put("type_id", cid).put("type_name", name);
     }
 
-    // 通用请求头
-    private Headers getBaseHeader() {
-        return new Headers.Builder()
-                .add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
-                .add("Referer", HOST + "/")
-                .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-                .add("Accept-Language", "zh-CN,zh;q=0.9")
-                .build();
-    }
-
     private String get(String url) throws IOException {
+        Headers headers = toHeaders(m95c(HOST + "/"));
         Request request = new Request.Builder()
                 .url(url)
-                .headers(getBaseHeader())
+                .headers(headers)
                 .get()
                 .build();
         try (Response response = client.newCall(request).execute()) {
@@ -99,7 +107,6 @@ public class FengYe extends Spider {
         }
     }
 
-    /** 解析首页/分类影片卡片 .public-list-box */
     private JSONObject parseVodItem(Element item) throws Exception {
         Element link = item.selectFirst("a");
         if (link == null) return null;
@@ -109,7 +116,6 @@ public class FengYe extends Spider {
         String vid = m.group(1);
         String title = link.attr("title").trim();
 
-        // 封面图data-src优先
         Element img = link.selectFirst("img");
         String pic = "";
         if (img != null) {
@@ -117,7 +123,6 @@ public class FengYe extends Spider {
         }
         pic = absUrl(pic);
 
-        // 更新备注（集数）
         Element tip = item.selectFirst(".public-list-prb");
         String remark = tip != null ? tip.text().trim() : "";
 
@@ -132,18 +137,15 @@ public class FengYe extends Spider {
     @Override
     public String homeContent(boolean filter) throws Exception {
         JSONArray classes = new JSONArray();
-        // 顶部平台精选分类
         classes.put(getClassMap("qq", "腾讯VIP精选"));
         classes.put(getClassMap("yk", "优酷VIP精选"));
         classes.put(getClassMap("bli", "B站VIP精选"));
-        // 全部分类
         classes.put(getClassMap("1", "电影"));
         classes.put(getClassMap("2", "电视剧"));
         classes.put(getClassMap("4", "动漫"));
         classes.put(getClassMap("3", "综艺"));
         classes.put(getClassMap("5", "短剧"));
 
-        // 分类筛选面板
         JSONObject filterDict = new JSONObject();
         String[] movieClass = {"动作", "喜剧", "爱情", "科幻", "恐怖", "剧情", "战争", "警匪", "犯罪", "动画", "奇幻", "武侠", "冒险", "枪战", "悬疑", "惊悚", "经典", "青春", "文艺", "微电影", "古装", "历史", "运动", "农村", "儿童", "网络电影"};
         String[] movieArea = {"大陆", "香港", "台湾", "美国", "韩国", "日本", "泰国", "新加坡", "马来西亚", "印度", "英国", "法国", "加拿大", "西班牙", "俄罗斯", "其它"};
@@ -175,7 +177,6 @@ public class FengYe extends Spider {
         return res.toString();
     }
 
-    // 生成筛选JSON
     private JSONArray makeFilter(String[] cls, String[] area, JSONArray years, JSONArray orders) throws Exception {
         JSONArray arr = new JSONArray();
         if (cls.length > 0) {
@@ -195,7 +196,6 @@ public class FengYe extends Spider {
         return arr;
     }
 
-    // 首页推荐数据
     @Override
     public String homeVideoContent() throws Exception {
         JSONArray list = new JSONArray();
@@ -214,26 +214,22 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 分类列表/平台精选
     @Override
     public String categoryContent(String cid, String pg, boolean filter, HashMap<String, String> ext) throws Exception {
-        get(HOST + "/"); // 初始化cookie
+        get(HOST + "/");
         int page = 1;
         try {
             page = Integer.parseInt(pg);
         } catch (Exception ignored) {}
 
         String targetUrl;
-        // qq/yk/bli 平台精选标签页
         if ("qq".equals(cid) || "yk".equals(cid) || "bli".equals(cid)) {
             targetUrl = HOST + "/label/" + cid + "/page/" + page + ".html";
         } else {
-            // 电影/剧集/动漫 筛选列表
             String area = ext.getOrDefault("area", "");
             String sort = ext.getOrDefault("by", "");
             String cls = ext.getOrDefault("class", "");
             String year = ext.getOrDefault("year", "");
-            // 拼接筛选地址
             targetUrl = String.format("%s/cupfox-list/%s-%s-%s-%s-----%s---.html",
                     HOST, cid, URLEncoder.encode(area, "UTF-8"), URLEncoder.encode(sort, "UTF-8"),
                     URLEncoder.encode(cls, "UTF-8"), URLEncoder.encode(year, "UTF-8"), page);
@@ -248,7 +244,6 @@ public class FengYe extends Spider {
             if (vod != null) list.put(vod);
         }
 
-        // 判断下一页
         boolean hasNext = false;
         Elements pageBtns = doc.select(".page-info a.page-link:not(.ho)");
         for (Element a : pageBtns) {
@@ -267,11 +262,9 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 详情页解析
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String vid = ids.get(0);
-        // 去除分集后缀
         if (vid.contains("$")) vid = vid.substring(0, vid.indexOf("$"));
         String detailUrl = HOST + "/detail/" + vid + ".html";
         String html = get(detailUrl);
@@ -292,7 +285,6 @@ public class FengYe extends Spider {
             else if (label.contains("简介")) desc = val;
         }
 
-        // 多线路分集
         List<String> playFrom = new ArrayList<>();
         List<String> playUrl = new ArrayList<>();
         Elements tabNames = doc.select(".anthology-tab .swiper-slide");
@@ -335,20 +327,17 @@ public class FengYe extends Spider {
         return res.toString();
     }
 
-    // 播放器解析
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         JSONObject ret = new JSONObject();
         ret.put("parse", 1);
         ret.put("url", id);
         String playHtml = get(absUrl(id));
-        // 匹配页面播放JSON
         Pattern playPat = Pattern.compile("var player_aaaa=(.*?);", Pattern.DOTALL);
         Matcher m = playPat.matcher(playHtml);
         if (!m.find()) return ret.toString();
         JSONObject playData = new JSONObject(m.group(1));
         String realUrl = playData.optString("url", "");
-        // 直链m3u8/mp4 关闭解析
         if (!TextUtils.isEmpty(realUrl) && (realUrl.contains(".m3u8") || realUrl.contains(".mp4"))) {
             ret.put("parse", 0);
             ret.put("url", realUrl);
@@ -356,11 +345,11 @@ public class FengYe extends Spider {
         return ret.toString();
     }
 
-    // 搜索接口
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         return searchContent(key, quick, "1");
     }
+
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         int page = 1;
@@ -389,12 +378,14 @@ public class FengYe extends Spider {
         return res.toString();
     }
 
-    // POST请求封装
+    // POST请求（已修复for-each编译错误）
     private String post(String url, Map<String, String> params, Headers.Builder headerExt) throws IOException {
         FormBody.Builder form = new FormBody.Builder(StandardCharsets.UTF_8);
-        for (Map.Entry<String, String> entry : params) form.add(entry.getKey(), entry.getValue());
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            form.add(entry.getKey(), entry.getValue());
+        }
         Headers.Builder hd = new Headers.Builder()
-                .add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
+                .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .add("Referer", HOST + "/")
                 .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                 .add("Accept-Language", "zh-CN,zh;q=0.9");
