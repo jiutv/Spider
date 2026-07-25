@@ -16,24 +16,20 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class Kugou extends Spider {
 
-    // 正则匹配页面内歌曲hash
-    private static final Pattern HASH_PATTERN = Pattern.compile("\"hash\":\"([0-9A-F]+)\"");
-
-    // 请求头
     private Map<String, String> getHeader() {
         Map<String, String> header = new HashMap<>();
         header.put("User-Agent", Util.CHROME);
-        header.put("Cookie", "kg_mid=8BE5438F72ED7681652BAAFFE72980C4");
+        header.put("Referer", "https://www.kugou.com/");
+        header.put("Accept-Language", "zh-CN,zh;q=0.9");
         return header;
     }
 
@@ -106,25 +102,28 @@ public class Kugou extends Spider {
 
     @Override
     public String playerContent(String flag, String data, List<String> vipFlags) throws Exception {
-        String[] arr = data.split("\\$");
-        if (arr.length < 2) throw new Exception("歌曲地址缺失");
-        String songUrl = arr[1];
-        // 访问单曲播放页面，提取hash
-        String html = OkHttp.string(songUrl, getHeader());
-        Matcher matcher = HASH_PATTERN.matcher(html);
-        if (!matcher.find()) throw new Exception("无法获取歌曲Hash");
-        String hash = matcher.group(1);
-        // 调用酷狗网页播放接口
-        String apiUrl = String.format("https://wwwapi.kugou.com/yy/index.php?r=play/getdata&hash=%s", hash);
-        String apiResp = OkHttp.string(apiUrl, getHeader());
-        JSONObject json = new JSONObject(apiResp);
-        JSONObject dataObj = json.getJSONObject("data");
-        String audioUrl = dataObj.optString("play_url");
-        if (TextUtils.isEmpty(audioUrl)) throw new Exception("暂无试听音源");
-        // 返回音频直链给TVBox播放器
-        return Result.get()
-                .url(audioUrl)
-                .header(getHeader())
-                .string();
+        try {
+            String[] arr = data.split("\\$");
+            if (arr.length < 2) throw new Exception("选集格式异常");
+            String songName = arr[0];
+            String keyword = URLEncoder.encode(songName, "UTF-8");
+            // meting接口 server=kw 酷我音源，稳定优先；想换回酷狗改为 server=kg
+            String searchApi = String.format("https://api.xygeng.cn/meting/api?server=kw&type=search&keywords=%s", keyword);
+            String resp = OkHttp.string(searchApi, getHeader());
+            JSONObject json = new JSONObject(resp);
+            JSONArray dataArray = json.getJSONArray("data");
+            if (dataArray.length() == 0) throw new Exception("未搜索到音源");
+
+            JSONObject songObj = dataArray.getJSONObject(0);
+            String audioUrl = songObj.optString("url");
+            if (TextUtils.isEmpty(audioUrl)) throw new Exception("暂无免费试听资源");
+
+            return Result.get()
+                    .url(audioUrl)
+                    .header(getHeader())
+                    .string();
+        } catch (Exception e) {
+            throw new Exception("播放失败：" + e.getMessage());
+        }
     }
 }
