@@ -7,11 +7,11 @@ import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Util;
-import org.apache.commons.compress.utils.CharsetNames;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -108,7 +108,7 @@ public class Kugou extends Spider {
      */
     private String getBackupAudio(String keyword) {
         try {
-            String encodeKey = URLEncoder.encode(keyword, "UTF-8");
+            String encodeKey = URLEncoder.encode(keyword, StandardCharsets.UTF_8.name());
             for (String api : METING_API) {
                 try {
                     String url = String.format("%s?server=%s&type=search&keywords=%s", api, AUDIO_SERVER, encodeKey);
@@ -265,7 +265,7 @@ public class Kugou extends Spider {
         if (TextUtils.isEmpty(key)) return Result.string(new ArrayList<>());
         List<Vod> list = new ArrayList<>();
         try {
-            String encodeKey = URLEncoder.encode(key, CharsetNames.UTF_8);
+            String encodeKey = URLEncoder.encode(key, StandardCharsets.UTF_8.name());
             String url = String.format("https://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=%s&page=%s&pagesize=20", encodeKey, page);
             JSONObject resp = getJson(url);
             JSONArray songArr = null;
