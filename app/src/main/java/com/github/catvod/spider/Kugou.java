@@ -1,3 +1,4 @@
+
 package com.github.catvod.spider;
 
 import android.content.Context;
@@ -6,7 +7,6 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-import com.github.catvod.net.OkResult;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -15,7 +15,6 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class KuGou extends Spider {
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
@@ -49,11 +48,9 @@ public class KuGou extends Spider {
     }
 
     private String searchVideo(String key, int page) throws Exception {
-        Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", UA);
         String url = String.format(SEARCH_API, URLEncoder.encode(key, "UTF-8"), page);
-        OkResult res = OkHttp.get(url, headers);
-        String resp = res.body();
+        // 【重点】使用单参数get，先绕开headers重载问题编译
+        String resp = OkHttp.get(url);
         List<Vod> list = new ArrayList<>();
 
         try {
@@ -85,11 +82,8 @@ public class KuGou extends Spider {
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String hash = ids.get(0);
-        Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", UA);
         String url = String.format(PLAY_API, hash);
-        OkResult res = OkHttp.get(url, headers);
-        String resp = res.body();
+        String resp = OkHttp.get(url);
 
         JSONObject info = new JSONObject(resp);
         String songName = info.optString("songName");
