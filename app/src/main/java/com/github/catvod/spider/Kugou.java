@@ -6,6 +6,7 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.net.OkResult;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,8 +52,8 @@ public class KuGou extends Spider {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", UA);
         String url = String.format(SEARCH_API, URLEncoder.encode(key, "UTF-8"), page);
-        // 修改：适配仓库OkHttp，重载方法
-        String resp = OkHttp.get(url, headers, null);
+        OkResult res = OkHttp.get(url, headers);
+        String resp = res.body();
         List<Vod> list = new ArrayList<>();
 
         try {
@@ -87,7 +88,8 @@ public class KuGou extends Spider {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", UA);
         String url = String.format(PLAY_API, hash);
-        String resp = OkHttp.get(url, headers, null);
+        OkResult res = OkHttp.get(url, headers);
+        String resp = res.body();
 
         JSONObject info = new JSONObject(resp);
         String songName = info.optString("songName");
