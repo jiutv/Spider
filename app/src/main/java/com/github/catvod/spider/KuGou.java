@@ -1,4 +1,3 @@
-
 package com.github.catvod.spider;
 
 import android.content.Context;
@@ -17,7 +16,6 @@ import java.util.HashMap;
 import java.util.List;
 
 public class KuGou extends Spider {
-    private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     private static final String SEARCH_API = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=%s&page=%d";
     private static final String PLAY_API = "https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=%s";
 
@@ -49,8 +47,8 @@ public class KuGou extends Spider {
 
     private String searchVideo(String key, int page) throws Exception {
         String url = String.format(SEARCH_API, URLEncoder.encode(key, "UTF-8"), page);
-        // 【重点】使用单参数get，先绕开headers重载问题编译
-        String resp = OkHttp.get(url);
+        // 仓库唯一支持写法：url, headers, params
+        String resp = OkHttp.get(url, null, null);
         List<Vod> list = new ArrayList<>();
 
         try {
@@ -83,36 +81,21 @@ public class KuGou extends Spider {
     public String detailContent(List<String> ids) throws Exception {
         String hash = ids.get(0);
         String url = String.format(PLAY_API, hash);
-        String resp = OkHttp.get(url);
+        String resp = OkHttp.get(url, null, null);
 
         JSONObject info = new JSONObject(resp);
         String songName = info.optString("songName");
         String singer = info.optString("author_name");
         String pic = info.optString("album_img").replace("{size}", "400").replace("http://", "https://");
-        JSONObject extra = info.optJSONObject("extra");
-
-        StringBuilder playUrls = new StringBuilder();
-        if (extra != null) {
-            String hash128 = extra.optString("128hash");
-            if (!hash128.isEmpty()) playUrls.append("标清$").append(getPlayUrl(hash128)).append("#");
-            String hash320 = extra.optString("320hash");
-            if (!hash320.isEmpty()) playUrls.append("高清$").append(getPlayUrl(hash320)).append("#");
-            String hashSq = extra.optString("sqhash");
-            if (!hashSq.isEmpty()) playUrls.append("无损$").append(getPlayUrl(hashSq)).append("#");
-        }
+        String playUrl = info.optString("playUrl");
 
         Vod vod = new Vod();
-        vod.setVodId(hash);
         vod.setVodName(songName);
         vod.setVodActor(singer);
         vod.setVodPic(pic);
-        vod.setVodPlayFrom("酷狗音乐");
-        vod.setVodPlayUrl(playUrls.toString());
+        vod.setVodPlayFrom("酷狗");
+        vod.setVodPlayUrl("播放$" + playUrl);
         return Result.string(vod);
-    }
-
-    private String getPlayUrl(String hash) {
-        return "https://fs.kg.qq.com/listen/" + hash + ".mp3";
     }
 
     @Override
