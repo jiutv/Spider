@@ -49,7 +49,7 @@ public class KuGou extends Spider {
     private String searchVideo(String key, int page) throws Exception {
         String url = String.format(SEARCH_API, URLEncoder.encode(key, "UTF-8"), page);
         OkResult result = OkHttp.get(url, null, null);
-        String resp = result.body();
+        String resp = result.text();
         List<Vod> list = new ArrayList<>();
 
         try {
@@ -83,7 +83,7 @@ public class KuGou extends Spider {
         String hash = ids.get(0);
         String url = String.format(PLAY_API, hash);
         OkResult result = OkHttp.get(url, null, null);
-        String resp = result.body();
+        String resp = result.text();
 
         JSONObject info = new JSONObject(resp);
         String songName = info.optString("songName");
