@@ -93,7 +93,7 @@ public class Jianpian extends Spider {
                 for (int i = 0; i < data.length(); i++) {
                     JSONObject item = data.optJSONObject(i);
                     if (item != null) {
-                        addVod(list, ids, parseVod(item));
+                        addVod(list, ids, getItemId(item), parseVod(item));
                     }
                 }
             }
@@ -434,12 +434,20 @@ public class Jianpian extends Spider {
         return Result.string(list);
     }
 
-    private void addVod(ArrayList<Vod> list, Set<String> ids, Vod vod) {
+    private void addVod(ArrayList<Vod> list, Set<String> ids, String id, Vod vod) {
         if (vod == null) return;
-        String id = vod.getVodId();
         if (TextUtils.isEmpty(id) || ids.contains(id)) return;
         ids.add(id);
         list.add(vod);
+    }
+
+    private String getItemId(JSONObject item) {
+        if (item == null) return "";
+        String id = item.optString("id");
+        if (item.has("jump_id") && !item.isNull("jump_id") && !TextUtils.isEmpty(item.optString("jump_id"))) {
+            id = item.optString("jump_id");
+        }
+        return id;
     }
 
     private void addCrumbHome(ArrayList<Vod> list, Set<String> ids, String tid, int max) {
@@ -453,7 +461,7 @@ public class Jianpian extends Spider {
                 JSONObject item = data.optJSONObject(i);
                 if (item == null) continue;
                 int before = list.size();
-                addVod(list, ids, parseVod(item));
+                addVod(list, ids, getItemId(item), parseVod(item));
                 if (list.size() > before) count++;
             }
         } catch (Exception ignored) {
@@ -477,7 +485,7 @@ public class Jianpian extends Spider {
                     JSONObject item = dataList.optJSONObject(j);
                     if (item == null) continue;
                     int before = list.size();
-                    addVod(list, ids, parseShortVod(item));
+                    addVod(list, ids, getItemId(item), parseShortVod(item));
                     if (list.size() > before) count++;
                 }
             }
