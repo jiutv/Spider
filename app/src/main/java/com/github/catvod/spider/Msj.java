@@ -43,7 +43,7 @@ import okhttp3.Response;
  * Usage:
  * Put this Java file into your TVBox spider project and configure extend:
  *
- *   {"baseUrl":"http://66.11.117.11:998","prefix":"/apptov5","token":""}
+ *   {"baseUrl":"https://japi.zxfmj.com","prefix":"","token":""}
  *
  * If the real API requires the /apptov5 prefix, use:
  *
@@ -62,8 +62,8 @@ public class Msj extends Spider {
             .followSslRedirects(true)
             .build();
 
-    private String baseUrl = "http://66.11.117.11:998";
-    private String prefix = "/apptov5";
+    private String baseUrl = "https://japi.zxfmj.com";
+    private String prefix = "";
     private String token = "";
     private String userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39";
 
@@ -89,9 +89,10 @@ public class Msj extends Spider {
 
     @Override
     public String homeContent(boolean filter) {
+        JSONObject result = new JSONObject();
+        JSONArray classes = new JSONArray();
         try {
-            JSONObject result = new JSONObject();
-            JSONArray classes = new JSONArray();
+            addDefaultClasses(classes);
 
             JSONObject home = fetchJson("/v1/home/data");
             appendClasses(classes, home);
@@ -99,12 +100,6 @@ public class Msj extends Spider {
             if (classes.length() == 0) {
                 JSONObject config = fetchJson("/v1/config/get");
                 appendClasses(classes, config);
-            }
-
-            if (classes.length() == 0) {
-                addClass(classes, "ranking", "排行榜");
-                addClass(classes, "scheduling", "追剧日程");
-                addClass(classes, "latest", "最新");
             }
 
             result.put("class", classes);
@@ -116,8 +111,26 @@ public class Msj extends Spider {
 
             return result.toString();
         } catch (Throwable e) {
-            return emptyList();
+            try {
+                if (classes.length() == 0) addDefaultClasses(classes);
+                result.put("class", classes);
+                if (filter) result.put("filters", buildFilters(classes));
+                result.put("list", new JSONArray());
+                return result.toString();
+            } catch (Throwable ignored) {
+                return emptyList();
+            }
         }
+    }
+
+    private void addDefaultClasses(JSONArray classes) {
+        addClass(classes, "latest", "最新");
+        addClass(classes, "ranking", "排行榜");
+        addClass(classes, "scheduling", "追剧日程");
+        addClass(classes, "1", "电影");
+        addClass(classes, "2", "电视剧");
+        addClass(classes, "3", "综艺");
+        addClass(classes, "4", "动漫");
     }
 
     @Override
@@ -298,7 +311,6 @@ public class Msj extends Spider {
         map.put("User-Agent", userAgent);
         map.put("Accept", "application/json,text/plain,*/*");
         map.put("Content-Type", "application/json");
-        map.put("APP token", token);
         map.put("__APPTO", "1");
         map.put("__deviceId", "tvbox");
         if (token != null && token.length() > 0) {
