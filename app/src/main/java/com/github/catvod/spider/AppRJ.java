@@ -32,6 +32,10 @@ public class AppRJ extends Spider {
     private String baseUrl = DEFAULT_BASE;
     private final OkHttpClient client = new OkHttpClient();
 
+    public AppRJ() {
+        this.baseUrl = DEFAULT_BASE;
+    }
+
     public void init(Context context, String extend) {
         if (!TextUtils.isEmpty(extend)) {
             baseUrl = extend.trim();
@@ -40,11 +44,46 @@ public class AppRJ extends Spider {
 
     public String homeContent(boolean filter) {
         ArrayList<Class> classes = new ArrayList<>();
-        return Result.string(classes, new JSONObject());
+        classes.add(new Class("1", "推荐"));
+        classes.add(new Class("2", "电影"));
+        classes.add(new Class("3", "剧集"));
+        classes.add(new Class("4", "动漫"));
+        classes.add(new Class("5", "综艺"));
+        classes.add(new Class("6", "短剧"));
+        classes.add(new Class("7", "热播"));
+        classes.add(new Class("8", "最新"));
+
+        ArrayList<Vod> list = new ArrayList<>();
+        try {
+            JSONObject root = new JSONObject(m43a("/v3/home/type_search", signedParams()));
+            JSONObject data = root.optJSONObject("data");
+            JSONArray arr = data != null ? data.optJSONArray("list") : null;
+            addVodItems(arr, list);
+        } catch (Exception ignored) {
+        }
+        return Result.string(classes, list);
     }
 
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
-        return Result.string(new ArrayList<Vod>());
+        ArrayList<Vod> list = new ArrayList<>();
+        try {
+            if (TextUtils.isEmpty(pg)) pg = "1";
+            HashMap<String, String> params = signedParams();
+            params.put("type_id", tid);
+            params.put("page", pg);
+
+            JSONObject root = new JSONObject(m43a("/v3/type/tj_vod", params));
+            JSONObject data = root.optJSONObject("data");
+            JSONArray arr = null;
+            if (data != null) {
+                arr = data.optJSONArray("cai");
+                if (arr == null) arr = data.optJSONArray("list");
+                if (arr == null) arr = data.optJSONArray("data");
+            }
+            addVodItems(arr, list);
+        } catch (Exception ignored) {
+        }
+        return Result.string(list);
     }
 
     public String searchContent(String keyword, boolean quick) {
@@ -55,7 +94,7 @@ public class AppRJ extends Spider {
             HashMap<String, String> params = signedParams();
             params.put("keyword", keyword);
 
-            JSONObject root = new JSONObject(post("/v3/home/search", params));
+            JSONObject root = new JSONObject(m43a("/v3/home/search", params));
             JSONObject data = root.optJSONObject("data");
             JSONArray arr = null;
             if (data != null) {
@@ -64,20 +103,7 @@ public class AppRJ extends Spider {
             }
             if (arr == null) arr = root.optJSONArray("data");
             if (arr == null) return Result.string(list);
-
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject item = arr.optJSONObject(i);
-                if (item == null) continue;
-
-                String pic = firstNonEmpty(item.optString("vod_pic"), item.optString("vod_pic_thumb"));
-                String id = item.optString("vod_id");
-                String name = item.optString("vod_name");
-                String remarks = item.optString("vod_remarks");
-
-                if (!TextUtils.isEmpty(id) && !TextUtils.isEmpty(name)) {
-                    list.add(new Vod(id, name, pic, remarks));
-                }
-            }
+            addVodItems(arr, list);
         } catch (Exception ignored) {
         }
         return Result.string(list);
@@ -91,7 +117,7 @@ public class AppRJ extends Spider {
             HashMap<String, String> params = signedParams();
             params.put("vod_id", ids.get(0));
 
-            JSONObject root = new JSONObject(post("/v3/home/vod_details", params));
+            JSONObject root = new JSONObject(m43a("/v3/home/vod_details", params));
             JSONObject data = root.optJSONObject("data");
             if (data == null) return Result.string(empty);
 
@@ -214,7 +240,7 @@ public class AppRJ extends Spider {
         }
     }
 
-    private String post(String path, Map<String, String> params) throws Exception {
+    private String m43a(String path, Map<String, String> params) throws Exception {
         MultipartBody.Builder form = new MultipartBody.Builder().setType(MultipartBody.FORM);
         for (Map.Entry<String, String> entry : params.entrySet()) {
             form.addFormDataPart(entry.getKey(), entry.getValue());
@@ -227,6 +253,23 @@ public class AppRJ extends Spider {
                 .build();
         Response response = client.newCall(request).execute();
         return response.body() == null ? "" : response.body().string();
+    }
+
+    private void addVodItems(JSONArray arr, ArrayList<Vod> list) {
+        if (arr == null) return;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) continue;
+
+            String pic = firstNonEmpty(item.optString("vod_pic"), item.optString("vod_pic_thumb"));
+            String id = item.optString("vod_id");
+            String name = item.optString("vod_name");
+            String remarks = item.optString("vod_remarks");
+
+            if (!TextUtils.isEmpty(id) && !TextUtils.isEmpty(name)) {
+                list.add(new Vod(id, name, pic, remarks));
+            }
+        }
     }
 
     private String get(String url) throws Exception {
