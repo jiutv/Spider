@@ -7,7 +7,6 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.net.OkHttp;
 
-import org.apache.commons.compress.utils.CharsetNames;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
@@ -16,6 +15,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,12 +27,12 @@ import java.util.regex.Pattern;
  * 酷狗音乐 Spider，可用于 TVBox / CatVod Spider 工程。
  *
  * 说明：
- * 1. 这是从混淆版 Kugou 还原整理的可读版。
+ * 1. 这是从混淆版 KuGou 还原整理的可读版。
  * 2. 原 Str.m4286u(...) 字符串已全部替换为明文。
  * 3. 依赖项目内常见的 com.github.catvod.*、OkHttp、Result、Vod、Spider。
  * 4. HTML 解析使用 jsoup；如果你的工程没有 jsoup，需要替换为项目内已有的 HTML 解析封装。
  */
-public class Kugou extends Spider {
+public class KuGou extends Spider {
 
     private static final Pattern PLAY_ID_PATTERN = Pattern.compile("play_id\\\\u0022:\\\\u0022([^\\\\]+)");
 
@@ -127,7 +127,6 @@ public class Kugou extends Spider {
         return headers;
     }
 
-    @Override
     public String homeContent(boolean filter) {
         ArrayList<Class> classes = new ArrayList<>();
         classes.add(new Class("hot", "热门榜"));
@@ -136,7 +135,6 @@ public class Kugou extends Spider {
         return Result.string(classes, new ArrayList<>());
     }
 
-    @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         if (!"1".equals(pg)) return empty();
 
@@ -176,7 +174,6 @@ public class Kugou extends Spider {
         return Result.string(list);
     }
 
-    @Override
     public String detailContent(List<String> ids) {
         if (ids == null || ids.isEmpty()) return empty();
 
@@ -261,7 +258,6 @@ public class Kugou extends Spider {
         return empty();
     }
 
-    @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
         if (TextUtils.isEmpty(id)) return emptyPlayer("");
 
@@ -333,7 +329,7 @@ public class Kugou extends Spider {
         if (TextUtils.isEmpty(songName)) return "";
 
         try {
-            String searchUrl = SQ0527_SEARCH + URLEncoder.encode(songName, CharsetNames.UTF_8);
+            String searchUrl = SQ0527_SEARCH + URLEncoder.encode(songName, StandardCharsets.UTF_8.name());
             Document doc = Jsoup.parse(requestHtml(searchUrl, SQ0527_BASE));
             Elements items = doc.select("ul.mul li a");
 
@@ -366,7 +362,7 @@ public class Kugou extends Spider {
         if (TextUtils.isEmpty(songName)) return "";
 
         try {
-            String searchUrl = GEQUBAO_SEARCH + URLEncoder.encode(songName, CharsetNames.UTF_8);
+            String searchUrl = GEQUBAO_SEARCH + URLEncoder.encode(songName, StandardCharsets.UTF_8.name());
             Document doc = Jsoup.parse(requestHtml(searchUrl, GEQUBAO_HOME));
             Elements items = doc.select("a[href^=/music/]");
 
@@ -384,7 +380,7 @@ public class Kugou extends Spider {
                 Matcher matcher = PLAY_ID_PATTERN.matcher(detailHtml);
                 if (!matcher.find()) continue;
 
-                String postBody = "id=" + URLEncoder.encode(matcher.group(1), CharsetNames.UTF_8);
+                String postBody = "id=" + URLEncoder.encode(matcher.group(1), StandardCharsets.UTF_8.name());
                 HashMap<String, String> headers = new HashMap<>(buildWebHeaders(detailUrl));
                 headers.put("Content-Type", "application/x-www-form-urlencoded");
 
@@ -415,12 +411,10 @@ public class Kugou extends Spider {
         return item == null ? "" : item.optString("downurl");
     }
 
-    @Override
     public String searchContent(String key, boolean quick) {
         return searchContent(key, quick, "1");
     }
 
-    @Override
     public String searchContent(String key, boolean quick, String pg) {
         if (TextUtils.isEmpty(key)) return empty();
         if (TextUtils.isEmpty(pg)) pg = "1";
@@ -428,7 +422,7 @@ public class Kugou extends Spider {
         ArrayList<Vod> list = new ArrayList<>();
 
         try {
-            String url = String.format(KUGOU_SEARCH, URLEncoder.encode(key.trim(), CharsetNames.UTF_8), pg);
+            String url = String.format(KUGOU_SEARCH, URLEncoder.encode(key.trim(), StandardCharsets.UTF_8.name()), pg);
             JSONObject root = requestJson(url);
             JSONObject data = root.optJSONObject("data");
             JSONArray info = data == null ? null : data.optJSONArray("info");
