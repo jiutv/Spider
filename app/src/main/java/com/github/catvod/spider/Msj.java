@@ -1,6 +1,11 @@
+package com.github.catvod.spider;
+
 import android.content.Context;
 
 import com.github.catvod.crawler.Spider;
+import com.github.catvod.crawler.SpiderDebug;
+import com.github.catvod.net.OkHttp;
+import com.github.catvod.utils.Util;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -11,96 +16,51 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 /**
- * TVBox Spider for the uploaded Flutter APK.
- *
- * APK analysis result:
- * 1. The app is a Flutter video app related to "appto/apptov5".
- * 2. Business paths found in libapp.so:
- *    /v1/home/data
- *    /v1/config/get
- *    /v1/vod/lists
- *    /v1/vod/ranking
- *    /v1/vod/rankingLists?id=
- *    /v1/vod/getRelVodLists
- *    /v1/vod/scheduling
- *    /v1/vod/schedulingLists?w=
- *    /v1/search/config
- *    /v1/search/lists
- *    /v1/parsing/proxy
- *    /v2/parsing/proxy
- * 3. The APK contains baseUrl cache/update strings, such as "Use cached baseUrl:",
- *    "Save newer baseUrl:" and "$$baseUrl$$", but no clear real business domain.
- * 4. The APK also contains "HttpClient.encryptDecodeInInterceptor", so some server
- *    responses may be encrypted depending on the active server configuration.
- *
- * Usage:
- * Put this Java file into your TVBox spider project and configure extend:
- *
- *   {"baseUrl":"https://japi.zxfmj.com","prefix":"","token":""}
- *
- * If the real API requires the /apptov5 prefix, use:
- *
- *   {"baseUrl":"https://your-real-domain.com","prefix":"/apptov5","token":""}
- *
- * If extend is only a URL, for example:
- *
- *   https://your-real-domain.com
- *
- * it will be used as baseUrl directly.
+ * 美视界 TVBox Spider
+ * 按 AppYsV2 模板风格改写，类名固定为 Msj，对应配置 csp_Msj。
  */
 public class Msj extends Spider {
-
-    private final OkHttpClient client = new OkHttpClient.Builder()
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build();
 
     private String baseUrl = "https://japi.zxfmj.com";
     private String prefix = "";
     private String token = "";
-    private String userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39";
+    private String ua = "Dalvik/2.1.0";
 
     @Override
-    public void init(Context context, String extend) {
+    public void init(Context context, String extend) throws Exception {
+        super.init(context, extend);
         try {
             if (extend == null) return;
             extend = extend.trim();
             if (extend.startsWith("{")) {
                 JSONObject ext = new JSONObject(extend);
-                String extBaseUrl = cleanBase(ext.optString("baseUrl", ext.optString("url", "")));
+                String extBase = cleanBase(ext.optString("baseUrl", ext.optString("url", "")));
                 String extPrefix = cleanPrefix(ext.optString("prefix", ""));
-                if (extBaseUrl.length() > 0) baseUrl = extBaseUrl;
-                if (extPrefix.length() > 0) prefix = extPrefix;
-                token = ext.optString("token", "");
-                userAgent = ext.optString("ua", userAgent);
+                if (!extBase.isEmpty()) baseUrl = extBase;
+                if (!extPrefix.isEmpty()) prefix = extPrefix;
+                token = ext.optString("token", token);
+                ua = ext.optString("ua", ua);
             } else if (extend.startsWith("http")) {
                 baseUrl = cleanBase(extend);
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            SpiderDebug.log(e);
         }
     }
 
     @Override
-    public String homeContent(boolean filter) {
+    public String homeContent(boolean filter) throws Exception {
         JSONObject result = new JSONObject();
-        JSONArray classes = new JSONArray();
-        try {
-            addDefaultClasses(classes);
+        JSONArray classes = defaultClasses();
 
+        try {
             JSONObject home = fetchJson("/v1/home/data");
             appendClasses(classes, home);
 
-            if (classes.length() == 0) {
-                JSONObject config = fetchJson("/v1/config/get");
-                appendClasses(classes, config);
-            }
+            JSONObject config = fetchJson("/v1/config/get");
+            appendClasses(classes, config);
 
             result.put("class", classes);
             if (filter) result.put("filters", buildFilters(classes));
@@ -108,177 +68,143 @@ public class Msj extends Spider {
             JSONArray videos = findVodArray(home);
             if (videos.length() == 0) videos = findVodArray(fetchJson("/v1/vod/ranking"));
             result.put("list", toVodList(videos));
-
             return result.toString();
         } catch (Throwable e) {
-            try {
-                if (classes.length() == 0) addDefaultClasses(classes);
-                result.put("class", classes);
-                if (filter) result.put("filters", buildFilters(classes));
-                result.put("list", new JSONArray());
-                return result.toString();
-            } catch (Throwable ignored) {
-                return emptyList();
-            }
+            SpiderDebug.log(e);
+            result.put("class", classes);
+            if (filter) result.put("filters", buildFilters(classes));
+            result.put("list", new JSONArray());
+            return result.toString();
         }
     }
 
-    private void addDefaultClasses(JSONArray classes) {
-        addClass(classes, "latest", "最新");
-        addClass(classes, "ranking", "排行榜");
-        addClass(classes, "scheduling", "追剧日程");
-        addClass(classes, "1", "电影");
-        addClass(classes, "2", "电视剧");
-        addClass(classes, "3", "综艺");
-        addClass(classes, "4", "动漫");
-    }
-
     @Override
-    public String homeVideoContent() {
+    public String homeVideoContent() throws Exception {
         try {
-            JSONObject json = fetchJson("/v1/vod/ranking");
             JSONObject result = new JSONObject();
-            result.put("list", toVodList(findVodArray(json)));
+            JSONArray list = findVodArray(fetchJson("/v1/vod/ranking"));
+            if (list.length() == 0) list = findVodArray(fetchJson("/v1/vod/lists?page=1"));
+            result.put("list", toVodList(list));
             return result.toString();
         } catch (Throwable e) {
+            SpiderDebug.log(e);
             return emptyList();
         }
     }
 
     @Override
-    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
+    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         try {
             int page = safePage(pg);
-            JSONObject result = new JSONObject();
             JSONObject json;
 
             if ("ranking".equals(tid)) {
                 json = fetchJson("/v1/vod/ranking");
             } else if ("scheduling".equals(tid)) {
                 json = fetchJson("/v1/vod/scheduling");
-            } else if ("latest".equals(tid)) {
-                json = fetchJson(appendFilterQuery(withQuery("/v1/vod/lists", "page", String.valueOf(page)), extend));
             } else {
-                String path = appendFilterQuery(withQuery("/v1/vod/lists",
+                String path = withQuery("/v1/vod/lists",
                         "type_id", tid,
                         "category_id", tid,
                         "categoryId", tid,
-                        "page", String.valueOf(page)), extend);
+                        "tid", tid,
+                        "page", String.valueOf(page),
+                        "pg", String.valueOf(page),
+                        "limit", "18");
+                path = appendFilterQuery(path, extend);
                 json = fetchJson(path);
             }
 
             JSONArray videos = findVodArray(json);
+            JSONObject result = new JSONObject();
             result.put("page", page);
             result.put("pagecount", guessPageCount(json, page));
-            result.put("limit", 20);
+            result.put("limit", 18);
             result.put("total", guessTotal(json, videos.length(), page));
             result.put("list", toVodList(videos));
             return result.toString();
         } catch (Throwable e) {
+            SpiderDebug.log(e);
             return emptyList();
         }
     }
 
     @Override
-    public String detailContent(List<String> ids) {
+    public String detailContent(List<String> ids) throws Exception {
         try {
             String id = ids == null || ids.isEmpty() ? "" : ids.get(0);
-            JSONObject item = loadDetail(id);
+            JSONObject src = loadDetail(id);
+            JSONObject vod = toDetailVod(src, id);
             JSONArray list = new JSONArray();
-            list.put(toDetailVod(item, id));
+            list.put(vod);
             JSONObject result = new JSONObject();
             result.put("list", list);
             return result.toString();
         } catch (Throwable e) {
+            SpiderDebug.log(e);
             return emptyList();
         }
     }
 
     @Override
-    public String searchContent(String key, boolean quick) {
+    public String searchContent(String key, boolean quick) throws Exception {
         try {
-            JSONObject json = fetchJson(withQuery("/v1/search/lists", "keyword", key, "page", "1"));
+            String wd = URLEncoder.encode(key, "UTF-8");
+            JSONObject json = fetchJson(withQuery("/v1/search/lists", "keyword", wd, "wd", wd, "text", wd, "page", "1", "pg", "1"));
             JSONObject result = new JSONObject();
             result.put("list", toVodList(findVodArray(json)));
             return result.toString();
         } catch (Throwable e) {
+            SpiderDebug.log(e);
             return emptyList();
         }
     }
 
     @Override
-    public String playerContent(String flag, String id, List<String> vipFlags) {
+    public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         try {
             JSONObject result = new JSONObject();
             result.put("parse", 0);
             result.put("playUrl", "");
-            result.put("header", new JSONObject(headers()).toString());
 
-            if (isMediaUrl(id)) {
+            if (isVideo(id)) {
                 result.put("url", id);
+                result.put("header", new JSONObject(getHeaders(id)).toString());
                 return result.toString();
             }
 
-            String play = tryResolve(id);
-            result.put("url", play.length() == 0 ? id : play);
+            String play = resolve(id);
+            if (!play.isEmpty() && isVideo(play)) {
+                result.put("url", play);
+                result.put("header", new JSONObject(getHeaders(play)).toString());
+                return result.toString();
+            }
+
+            result.put("parse", 1);
+            result.put("jx", "1");
+            result.put("url", id);
             return result.toString();
         } catch (Throwable e) {
+            SpiderDebug.log(e);
             return "{}";
         }
     }
 
-    private JSONObject loadDetail(String id) {
-        List<String> candidates = new ArrayList<>();
-        candidates.add(withQuery("/v1/vod/lists", "id", id));
-        candidates.add(withQuery("/v1/vod/lists", "vod_id", id));
-        candidates.add(withQuery("/v1/vod/lists", "nid", id));
-        candidates.add(withQuery("/v1/vod/getRelVodLists", "id", id));
-
-        for (String path : candidates) {
-            try {
-                JSONObject json = fetchJson(path);
-                JSONObject found = findVodObject(json, id);
-                if (found.length() > 0) return found;
-            } catch (Throwable ignored) {
-            }
-        }
-
-        JSONObject fallback = new JSONObject();
-        try {
-            fallback.put("vod_id", id);
-            fallback.put("vod_name", id);
-            fallback.put("vod_play_from", "默认");
-            fallback.put("vod_play_url", "播放$" + id);
-        } catch (Throwable ignored) {
-        }
-        return fallback;
+    @Override
+    public boolean manualVideoCheck() {
+        return true;
     }
 
-    private String tryResolve(String url) {
-        String[] apis = {
-                withQuery("/v1/parsing/proxy", "url", url),
-                withQuery("/v2/parsing/proxy", "url", url),
-                withQuery("/v1/parsing/proxy", "play_url", url),
-                withQuery("/v2/parsing/proxy", "play_url", url)
-        };
-
-        for (String api : apis) {
-            try {
-                JSONObject json = fetchJson(api);
-                String play = firstString(json,
-                        "url", "play_url", "playUrl", "video_url", "videoUrl",
-                        "vod_url", "vodUrl", "video_set_url", "videoSetUrl");
-                if (isMediaUrl(play)) return play;
-            } catch (Throwable ignored) {
-            }
-        }
-        return "";
+    @Override
+    public boolean isVideoFormat(String url) {
+        return isVideo(url);
     }
 
     private JSONObject fetchJson(String path) throws Exception {
-        String body = get(api(path));
-        body = decryptIfNeeded(body);
-        if (body == null || body.trim().length() == 0) return new JSONObject();
+        String url = api(path);
+        SpiderDebug.log(url);
+        String body = OkHttp.string(url, getHeaders(url));
+        if (body == null || body.trim().isEmpty()) return new JSONObject();
         body = body.trim();
         if (body.startsWith("[")) {
             JSONObject wrapper = new JSONObject();
@@ -288,132 +214,64 @@ public class Msj extends Spider {
         return new JSONObject(body);
     }
 
-    private String get(String url) throws Exception {
-        Request.Builder builder = new Request.Builder().url(url).get();
-        for (Map.Entry<String, String> entry : headers().entrySet()) {
-            builder.addHeader(entry.getKey(), entry.getValue());
+    private HashMap<String, String> getHeaders(String url) {
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", ua);
+        headers.put("Accept", "application/json,text/plain,*/*");
+        headers.put("__APPTO", "1");
+        headers.put("__deviceId", "tvbox");
+        if (token != null && !token.isEmpty()) {
+            headers.put("token", token);
+            headers.put("authorization", token);
         }
-        Response response = client.newCall(builder.build()).execute();
-        if (response.body() == null) return "";
-        return response.body().string();
-    }
-
-    /**
-     * The APK has "HttpClient.encryptDecodeInInterceptor" and RSA-related strings.
-     * If your active server returns encrypted payloads, add the real decryption here.
-     */
-    private String decryptIfNeeded(String body) {
-        return body;
-    }
-
-    private Map<String, String> headers() {
-        Map<String, String> map = new HashMap<>();
-        map.put("User-Agent", userAgent);
-        map.put("Accept", "application/json,text/plain,*/*");
-        map.put("Content-Type", "application/json");
-        map.put("__APPTO", "1");
-        map.put("__deviceId", "tvbox");
-        if (token != null && token.length() > 0) {
-            map.put("token", token);
-            map.put("authorization", token);
-        }
-        return map;
+        return headers;
     }
 
     private String api(String path) {
+        if (path == null) return baseUrl;
         if (path.startsWith("http")) return path;
         String p = path.startsWith("/") ? path : "/" + path;
-        if (baseUrl.length() == 0) return p;
         if (p.startsWith("/apptov5")) return baseUrl + p;
         return baseUrl + prefix + p;
     }
 
-    private JSONObject buildFilters(JSONArray classes) {
-        JSONObject filters = new JSONObject();
-        try {
-            JSONArray common = new JSONArray();
-            common.put(filterItem("class", "类型",
-                    "全部:", "动作:动作", "喜剧:喜剧", "爱情:爱情", "科幻:科幻", "恐怖:恐怖", "剧情:剧情", "战争:战争", "悬疑:悬疑", "动画:动画", "综艺:综艺", "纪录:纪录"));
-            common.put(filterItem("area", "地区",
-                    "全部:", "大陆:大陆", "香港:香港", "台湾:台湾", "美国:美国", "韩国:韩国", "日本:日本", "泰国:泰国", "英国:英国", "法国:法国", "印度:印度", "其他:其他"));
-            common.put(filterItem("year", "年份",
-                    "全部:", "2026:2026", "2025:2025", "2024:2024", "2023:2023", "2022:2022", "2021:2021", "2020:2020", "2019:2019", "2018:2018", "2017:2017", "2016:2016"));
-            common.put(filterItem("lang", "语言",
-                    "全部:", "国语:国语", "粤语:粤语", "英语:英语", "韩语:韩语", "日语:日语", "泰语:泰语", "其他:其他"));
-            common.put(filterItem("sort", "排序",
-                    "默认:", "最新:time", "最热:hits", "评分:score"));
-
-            if (classes == null || classes.length() == 0) {
-                filters.put("latest", common);
-                return filters;
-            }
-
-            for (int i = 0; i < classes.length(); i++) {
-                Object item = classes.opt(i);
-                if (!(item instanceof JSONObject)) continue;
-                String typeId = ((JSONObject) item).optString("type_id", "");
-                if (typeId.length() > 0) filters.put(typeId, common);
-            }
-        } catch (Throwable ignored) {
-        }
-        return filters;
+    private JSONArray defaultClasses() {
+        JSONArray arr = new JSONArray();
+        addClass(arr, "latest", "最新");
+        addClass(arr, "ranking", "排行榜");
+        addClass(arr, "scheduling", "追剧日程");
+        addClass(arr, "movie", "电影");
+        addClass(arr, "tvplay", "电视剧");
+        addClass(arr, "tvshow", "综艺");
+        addClass(arr, "comic", "动漫");
+        addClass(arr, "movie_4k", "4K");
+        return arr;
     }
 
-    private JSONObject filterItem(String key, String name, String... pairs) {
-        JSONObject obj = new JSONObject();
-        JSONArray values = new JSONArray();
-        try {
-            obj.put("key", key);
-            obj.put("name", name);
-            for (String pair : pairs) {
-                String[] parts = pair.split(":", 2);
-                JSONObject value = new JSONObject();
-                value.put("n", parts[0]);
-                value.put("v", parts.length > 1 ? parts[1] : parts[0]);
-                values.put(value);
-            }
-            obj.put("value", values);
-        } catch (Throwable ignored) {
-        }
-        return obj;
-    }
-
-    private String appendFilterQuery(String path, HashMap<String, String> extend) {
-        if (extend == null || extend.isEmpty()) return path;
-        StringBuilder sb = new StringBuilder(path);
-        appendFilterParam(sb, extend, "class", "class", "vod_class", "vodClass");
-        appendFilterParam(sb, extend, "area", "area", "vod_area", "vodArea");
-        appendFilterParam(sb, extend, "year", "year", "vod_year", "vodYear");
-        appendFilterParam(sb, extend, "lang", "lang", "vod_lang", "vodLang");
-        appendFilterParam(sb, extend, "sort", "sort", "order", "by");
-        return sb.toString();
-    }
-
-    private void appendFilterParam(StringBuilder sb, HashMap<String, String> extend, String key, String... requestKeys) {
-        String value = extend.get(key);
-        if (value == null || value.trim().length() == 0 || "全部".equals(value.trim())) return;
-        for (String requestKey : requestKeys) appendQueryParam(sb, requestKey, value.trim());
-    }
-
-    private void appendQueryParam(StringBuilder sb, String key, String value) {
-        sb.append(sb.indexOf("?") >= 0 ? "&" : "?");
-        sb.append(enc(key)).append("=").append(enc(value));
-    }
-
-    private void appendClasses(JSONArray classes, JSONObject json) {
+    private void appendClasses(JSONArray classes, Object node) {
         HashSet<String> seen = new HashSet<>();
-        collectClasses(json, classes, seen);
+        try {
+            for (int i = 0; i < classes.length(); i++) {
+                JSONObject item = classes.optJSONObject(i);
+                if (item != null) seen.add(item.optString("type_id") + "|" + item.optString("type_name"));
+            }
+        } catch (Throwable ignored) {
+        }
+        collectClasses(node, classes, seen);
     }
 
     private void collectClasses(Object node, JSONArray out, HashSet<String> seen) {
         try {
             if (node instanceof JSONObject) {
-                JSONObject obj = unwrapData((JSONObject) node);
-                String id = firstString(obj, "type_id", "typeId", "category_id", "categoryId", "id", "vod_class");
-                String name = firstString(obj, "type_name", "typeName", "category_name", "categoryName", "name", "title", "vod_class");
-                if (id.length() > 0 && name.length() > 0 && !seen.contains(id + name)) {
-                    addClass(out, id, name);
-                    seen.add(id + name);
+                JSONObject obj = unwrap((JSONObject) node);
+                String id = firstString(obj, "type_id", "typeId", "category_id", "categoryId", "class_id", "id");
+                String name = firstString(obj, "type_name", "typeName", "category_name", "categoryName", "class_name", "name", "title");
+                if (!id.isEmpty() && !name.isEmpty()) {
+                    String key = id + "|" + name;
+                    if (!seen.contains(key)) {
+                        addClass(out, id, name);
+                        seen.add(key);
+                    }
                 }
                 Iterator<String> keys = obj.keys();
                 while (keys.hasNext()) collectClasses(obj.opt(keys.next()), out, seen);
@@ -425,20 +283,108 @@ public class Msj extends Spider {
         }
     }
 
-    private void addClass(JSONArray classes, String id, String name) {
+    private JSONObject buildFilters(JSONArray classes) {
+        JSONObject filters = new JSONObject();
         try {
-            JSONObject obj = new JSONObject();
-            obj.put("type_id", id);
-            obj.put("type_name", name);
-            classes.put(obj);
+            JSONArray common = new JSONArray();
+            common.put(filterItem("class", "类型", "全部=", "喜剧=喜剧", "爱情=爱情", "恐怖=恐怖", "动作=动作", "科幻=科幻", "剧情=剧情", "战争=战争", "犯罪=犯罪", "动画=动画", "悬疑=悬疑", "纪录=纪录"));
+            common.put(filterItem("area", "地区", "全部=", "大陆=大陆", "香港=香港", "台湾=台湾", "美国=美国", "韩国=韩国", "日本=日本", "泰国=泰国", "英国=英国", "法国=法国", "印度=印度", "其他=其他"));
+            common.put(filterItem("lang", "语言", "全部=", "国语=国语", "粤语=粤语", "英语=英语", "韩语=韩语", "日语=日语", "泰语=泰语", "其他=其他"));
+            common.put(filterItem("year", "年份", "全部=", "2026=2026", "2025=2025", "2024=2024", "2023=2023", "2022=2022", "2021=2021", "2020=2020", "2019=2019", "2018=2018", "2017=2017", "2016=2016"));
+            common.put(filterItem("排序", "排序", "全部=", "最新=time", "最热=hits", "评分=score"));
+
+            for (int i = 0; i < classes.length(); i++) {
+                JSONObject item = classes.optJSONObject(i);
+                if (item == null) continue;
+                String typeId = item.optString("type_id", "");
+                if (!typeId.isEmpty()) filters.put(typeId, common);
+            }
         } catch (Throwable ignored) {
         }
+        return filters;
+    }
+
+    private JSONObject filterItem(String key, String name, String... pairs) throws Exception {
+        JSONObject item = new JSONObject();
+        JSONArray values = new JSONArray();
+        item.put("key", key);
+        item.put("name", name);
+        for (String pair : pairs) {
+            String[] kv = pair.split("=", 2);
+            JSONObject value = new JSONObject();
+            value.put("n", kv[0]);
+            value.put("v", kv.length > 1 ? kv[1] : kv[0]);
+            values.put(value);
+        }
+        item.put("value", values);
+        return item;
+    }
+
+    private String appendFilterQuery(String path, HashMap<String, String> extend) {
+        if (extend == null || extend.isEmpty()) return path;
+        StringBuilder sb = new StringBuilder(path);
+        appendFilterParam(sb, extend, "class", "class", "vod_class", "type");
+        appendFilterParam(sb, extend, "area", "area", "vod_area");
+        appendFilterParam(sb, extend, "lang", "lang", "vod_lang");
+        appendFilterParam(sb, extend, "year", "year", "vod_year", "start");
+        appendFilterParam(sb, extend, "排序", "by", "sort", "order");
+        return sb.toString();
+    }
+
+    private void appendFilterParam(StringBuilder sb, HashMap<String, String> extend, String key, String... requestKeys) {
+        String value = extend.get(key);
+        if (value == null || value.trim().isEmpty() || "全部".equals(value.trim())) return;
+        for (String requestKey : requestKeys) appendQueryParam(sb, requestKey, value.trim());
+    }
+
+    private JSONObject loadDetail(String id) {
+        String[] paths = new String[]{
+                withQuery("/v1/vod/detail", "id", id),
+                withQuery("/v1/vod/detail", "vod_id", id),
+                withQuery("/v1/vod/lists", "id", id),
+                withQuery("/v1/vod/lists", "vod_id", id),
+                withQuery("/v1/vod/getRelVodLists", "id", id)
+        };
+        for (String path : paths) {
+            try {
+                JSONObject found = findVodObject(fetchJson(path), id);
+                if (found.length() > 0) return found;
+            } catch (Throwable ignored) {
+            }
+        }
+        JSONObject fallback = new JSONObject();
+        try {
+            fallback.put("vod_id", id);
+            fallback.put("vod_name", id);
+            fallback.put("vod_play_from", "默认");
+            fallback.put("vod_play_url", "播放$" + id);
+        } catch (Throwable ignored) {
+        }
+        return fallback;
+    }
+
+    private String resolve(String url) {
+        String[] paths = new String[]{
+                withQuery("/v1/parsing/proxy", "url", url),
+                withQuery("/v2/parsing/proxy", "url", url),
+                withQuery("/v1/parsing/proxy", "play_url", url),
+                withQuery("/v2/parsing/proxy", "play_url", url)
+        };
+        for (String path : paths) {
+            try {
+                JSONObject json = fetchJson(path);
+                String play = firstString(json, "url", "play_url", "playUrl", "video_url", "videoUrl", "vod_url", "vodUrl");
+                if (isVideo(play)) return play;
+            } catch (Throwable ignored) {
+            }
+        }
+        return "";
     }
 
     private JSONArray findVodArray(Object node) {
-        JSONArray found = new JSONArray();
-        collectVodArray(node, found);
-        return found;
+        JSONArray out = new JSONArray();
+        collectVodArray(node, out);
+        return out;
     }
 
     private boolean collectVodArray(Object node, JSONArray out) {
@@ -461,7 +407,7 @@ public class Msj extends Spider {
                     if (collectVodArray(arr.opt(i), out)) return true;
                 }
             } else if (node instanceof JSONObject) {
-                JSONObject obj = unwrapData((JSONObject) node);
+                JSONObject obj = unwrap((JSONObject) node);
                 Iterator<String> keys = obj.keys();
                 while (keys.hasNext()) {
                     if (collectVodArray(obj.opt(keys.next()), out)) return true;
@@ -475,10 +421,10 @@ public class Msj extends Spider {
     private JSONObject findVodObject(Object node, String id) {
         try {
             if (node instanceof JSONObject) {
-                JSONObject obj = unwrapData((JSONObject) node);
+                JSONObject obj = unwrap((JSONObject) node);
                 if (looksLikeVod(obj)) {
-                    String oid = vodId(obj);
-                    if (id == null || id.length() == 0 || id.equals(oid)) return obj;
+                    String vodId = vodId(obj);
+                    if (id == null || id.isEmpty() || id.equals(vodId)) return obj;
                 }
                 Iterator<String> keys = obj.keys();
                 while (keys.hasNext()) {
@@ -501,15 +447,14 @@ public class Msj extends Spider {
         JSONArray list = new JSONArray();
         for (int i = 0; i < arr.length(); i++) {
             try {
-                Object value = arr.opt(i);
-                if (!(value instanceof JSONObject)) continue;
-                JSONObject src = (JSONObject) value;
+                JSONObject src = arr.optJSONObject(i);
+                if (src == null) continue;
                 JSONObject vod = new JSONObject();
                 vod.put("vod_id", vodId(src));
                 vod.put("vod_name", vodName(src));
                 vod.put("vod_pic", firstString(src, "vod_pic", "vodPic", "vod_cover", "vodCover", "video_cover", "videoCover", "pic", "cover", "img", "image"));
-                vod.put("vod_remarks", firstString(src, "vod_remarks", "vodRemarks", "vod_sub", "vodSub", "remark", "remarks", "score", "vod_score", "vodScore"));
-                list.put(vod);
+                vod.put("vod_remarks", firstString(src, "vod_remarks", "vodRemarks", "vod_sub", "vodSub", "remark", "remarks", "state", "score", "vod_score", "vodScore"));
+                if (!vod.optString("vod_id").isEmpty() && !vod.optString("vod_name").isEmpty()) list.put(vod);
             } catch (Throwable ignored) {
             }
         }
@@ -520,86 +465,69 @@ public class Msj extends Spider {
         JSONObject vod = new JSONObject();
         try {
             String id = vodId(src);
-            if (id.length() == 0) id = fallbackId;
-
+            if (id.isEmpty()) id = fallbackId;
             vod.put("vod_id", id);
-            vod.put("vod_name", vodName(src));
+            vod.put("vod_name", vodName(src).isEmpty() ? id : vodName(src));
             vod.put("vod_pic", firstString(src, "vod_pic", "vodPic", "vod_cover", "vodCover", "video_cover", "videoCover", "pic", "cover", "img", "image"));
-            vod.put("type_name", firstString(src, "type_name", "typeName", "vod_type_name", "vodTypeName", "vod_class", "vodClass"));
+            vod.put("type_name", firstString(src, "type_name", "typeName", "vod_type_name", "vodTypeName", "vod_class", "vodClass", "class"));
             vod.put("vod_year", firstString(src, "vod_year", "vodYear", "year"));
             vod.put("vod_area", firstString(src, "vod_area", "vodArea", "area"));
             vod.put("vod_lang", firstString(src, "vod_lang", "vodLang", "lang"));
             vod.put("vod_actor", firstString(src, "vod_actor", "vodActor", "actor"));
             vod.put("vod_director", firstString(src, "vod_director", "vodDirector", "director"));
-            vod.put("vod_content", firstString(src, "vod_content", "vodContent", "vod_blurb", "vodBlurb", "content", "desc", "description"));
-
-            String[] play = buildPlay(src);
-            vod.put("vod_play_from", play[0].length() == 0 ? "默认" : play[0]);
-            vod.put("vod_play_url", play[1].length() == 0 ? "播放$" + id : play[1]);
+            vod.put("vod_content", firstString(src, "vod_content", "vodContent", "vod_blurb", "vodBlurb", "content", "desc", "description", "intro"));
+            String[] play = buildPlay(src, id);
+            vod.put("vod_play_from", play[0].isEmpty() ? "默认" : play[0]);
+            vod.put("vod_play_url", play[1].isEmpty() ? "播放$" + id : play[1]);
         } catch (Throwable ignored) {
         }
         return vod;
     }
 
-    private String[] buildPlay(JSONObject src) {
-        List<String> from = new ArrayList<>();
-        List<String> urls = new ArrayList<>();
-
+    private String[] buildPlay(JSONObject src, String fallbackId) {
+        ArrayList<String> from = new ArrayList<>();
+        ArrayList<String> urls = new ArrayList<>();
         try {
-            Object playList = first(src,
-                    "vod_play_list", "vodPlayList", "playlist", "playList",
-                    "urls", "video_chunks", "videoChunks", "play_url", "playUrl");
-            parsePlayNode(playList, from, urls);
-
-            if (urls.isEmpty()) {
-                String url = firstString(src, "video_set_url", "videoSetUrl", "play_url", "playUrl", "vod_url", "vodUrl", "url");
-                if (url.length() > 0) {
-                    from.add("默认");
-                    urls.add("播放$" + url);
-                }
-            }
+            Object playNode = first(src, "vod_play_list", "vodPlayList", "vod_url_with_player", "vodUrlWithPlayer", "playlist", "playList", "urls", "video_chunks", "videoChunks", "play_url", "playUrl", "vod_url", "vodUrl", "url");
+            parsePlayNode(playNode, from, urls);
+            if (urls.isEmpty()) urls.add("播放$" + fallbackId);
         } catch (Throwable ignored) {
         }
         return new String[]{join(from, "$$$"), join(urls, "$$$")};
     }
 
-    private void parsePlayNode(Object node, List<String> from, List<String> urls) {
+    private void parsePlayNode(Object node, ArrayList<String> from, ArrayList<String> urls) {
         try {
             if (node instanceof JSONArray) {
                 JSONArray arr = (JSONArray) node;
-                boolean allEpisodes = true;
+                boolean simpleEpisodes = true;
                 for (int i = 0; i < arr.length(); i++) {
                     Object item = arr.opt(i);
-                    if (!(item instanceof String) && !(item instanceof JSONObject)) {
-                        allEpisodes = false;
-                        break;
-                    }
+                    if (!(item instanceof String) && !(item instanceof JSONObject)) simpleEpisodes = false;
                 }
-
-                if (allEpisodes && arr.length() > 0 && !containsSourceObject(arr)) {
+                if (simpleEpisodes && arr.length() > 0 && !containsSourceObject(arr)) {
                     from.add("默认");
                     urls.add(episodesToString(arr));
                     return;
                 }
-
                 for (int i = 0; i < arr.length(); i++) parsePlayNode(arr.opt(i), from, urls);
             } else if (node instanceof JSONObject) {
                 JSONObject obj = (JSONObject) node;
-                String source = firstString(obj, "video_set_name", "videoSetName", "name", "from", "source", "player");
+                String source = firstString(obj, "code", "name", "video_set_name", "videoSetName", "from", "source", "player", "show");
                 Object child = first(obj, "urls", "list", "playlist", "playList", "video_chunks", "videoChunks", "items");
                 if (child != null) {
-                    from.add(source.length() == 0 ? "默认" : source);
+                    from.add(source.isEmpty() ? "默认" : source);
                     urls.add(episodesToString(child));
                     return;
                 }
-                String url = firstString(obj, "video_set_url", "videoSetUrl", "play_url", "playUrl", "vod_url", "vodUrl", "url");
-                if (url.length() > 0) {
-                    from.add(source.length() == 0 ? "默认" : source);
+                String url = firstString(obj, "url", "play_url", "playUrl", "video_set_url", "videoSetUrl", "vod_url", "vodUrl");
+                if (!url.isEmpty()) {
+                    from.add(source.isEmpty() ? "默认" : source);
                     urls.add(episodeName(obj, 1) + "$" + url);
                 }
             } else if (node instanceof String) {
                 String s = (String) node;
-                if (s.length() > 0) {
+                if (!s.isEmpty()) {
                     from.add("默认");
                     urls.add(s.contains("$") ? s : "播放$" + s);
                 }
@@ -609,7 +537,7 @@ public class Msj extends Spider {
     }
 
     private String episodesToString(Object node) {
-        List<String> eps = new ArrayList<>();
+        ArrayList<String> eps = new ArrayList<>();
         try {
             if (node instanceof JSONArray) {
                 JSONArray arr = (JSONArray) node;
@@ -618,7 +546,7 @@ public class Msj extends Spider {
                     if (item instanceof JSONObject) {
                         JSONObject obj = (JSONObject) item;
                         String url = firstString(obj, "url", "play_url", "playUrl", "video_set_url", "videoSetUrl", "vod_url", "vodUrl");
-                        if (url.length() > 0) eps.add(episodeName(obj, i + 1) + "$" + url);
+                        if (!url.isEmpty()) eps.add(episodeName(obj, i + 1) + "$" + url);
                     } else if (item instanceof String) {
                         String s = (String) item;
                         eps.add(s.contains("$") ? s : ("第" + (i + 1) + "集$" + s));
@@ -638,7 +566,7 @@ public class Msj extends Spider {
             Object item = arr.opt(i);
             if (item instanceof JSONObject) {
                 JSONObject obj = (JSONObject) item;
-                if (obj.has("urls") || obj.has("list") || obj.has("playlist") || obj.has("video_chunks")) return true;
+                if (obj.has("urls") || obj.has("list") || obj.has("playlist") || obj.has("video_chunks") || obj.has("items")) return true;
             }
         }
         return false;
@@ -646,23 +574,25 @@ public class Msj extends Spider {
 
     private String episodeName(JSONObject obj, int index) {
         String name = firstString(obj, "name", "title", "video_set_name", "videoSetName", "vod_name", "vodName");
-        return name.length() == 0 ? "第" + index + "集" : name;
+        return name.isEmpty() ? "第" + index + "集" : name;
     }
 
     private boolean looksLikeVod(JSONObject obj) {
         return obj.has("vod_id") || obj.has("vod_name") || obj.has("video_id") || obj.has("video_name")
-                || obj.has("vodName") || obj.has("vodPic") || obj.has("vod_play_list") || obj.has("play_url");
+                || obj.has("vodName") || obj.has("vodPic") || obj.has("nextlink") || obj.has("title")
+                || obj.has("vod_play_list") || obj.has("play_url") || obj.has("playUrl");
     }
 
     private String vodId(JSONObject obj) {
-        return firstString(obj, "vod_id", "vodId", "video_id", "videoId", "id", "nid", "vod_nid", "vodNid");
+        String id = firstString(obj, "vod_id", "vodId", "video_id", "videoId", "id", "nid", "vod_nid", "vodNid", "nextlink");
+        return id.isEmpty() ? firstString(obj, "url", "play_url", "playUrl") : id;
     }
 
     private String vodName(JSONObject obj) {
         return firstString(obj, "vod_name", "vodName", "video_name", "videoName", "name", "title");
     }
 
-    private JSONObject unwrapData(JSONObject obj) {
+    private JSONObject unwrap(JSONObject obj) {
         try {
             if (obj.has("data") && obj.opt("data") instanceof JSONObject) return obj.optJSONObject("data");
             if (obj.has("result") && obj.opt("result") instanceof JSONObject) return obj.optJSONObject("result");
@@ -681,58 +611,29 @@ public class Msj extends Spider {
     private String firstString(JSONObject obj, String... keys) {
         for (String key : keys) {
             String value = obj.optString(key, "");
-            if (value != null && value.trim().length() > 0 && !"null".equalsIgnoreCase(value.trim())) {
-                return value.trim();
-            }
-        }
-        return "";
-    }
-
-    private String firstString(Object node, String... keys) {
-        try {
-            if (node instanceof JSONObject) {
-                JSONObject obj = (JSONObject) node;
-                String direct = firstString(obj, keys);
-                if (direct.length() > 0) return direct;
-                Iterator<String> it = obj.keys();
-                while (it.hasNext()) {
-                    String found = firstString(obj.opt(it.next()), keys);
-                    if (found.length() > 0) return found;
-                }
-            } else if (node instanceof JSONArray) {
-                JSONArray arr = (JSONArray) node;
-                for (int i = 0; i < arr.length(); i++) {
-                    String found = firstString(arr.opt(i), keys);
-                    if (found.length() > 0) return found;
-                }
-            }
-        } catch (Throwable ignored) {
+            if (value != null && !value.trim().isEmpty() && !"null".equalsIgnoreCase(value.trim())) return value.trim();
         }
         return "";
     }
 
     private int guessPageCount(JSONObject json, int current) {
-        int totalPage = json.optInt("pagecount", json.optInt("page_count", json.optInt("totalPage", 0)));
-        return totalPage > 0 ? totalPage : current + 1;
+        try {
+            int totalPage = json.optInt("pagecount", json.optInt("page_count", json.optInt("totalPage", json.optInt("totalpage", 0))));
+            if (totalPage > 0) return totalPage;
+            JSONObject data = json.optJSONObject("data");
+            if (data != null) {
+                int total = data.optInt("total", 0);
+                int limit = data.optInt("limit", 18);
+                if (total > 0 && limit > 0) return total % limit == 0 ? total / limit : total / limit + 1;
+            }
+        } catch (Throwable ignored) {
+        }
+        return current + 1;
     }
 
     private int guessTotal(JSONObject json, int size, int page) {
         int total = json.optInt("total", json.optInt("count", 0));
-        return total > 0 ? total : page * Math.max(size, 20);
-    }
-
-    private int safePage(String pg) {
-        try {
-            return Math.max(1, Integer.parseInt(pg));
-        } catch (Throwable e) {
-            return 1;
-        }
-    }
-
-    private boolean isMediaUrl(String value) {
-        if (value == null) return false;
-        String v = value.toLowerCase();
-        return v.startsWith("http") && (v.contains(".m3u8") || v.contains(".mp4") || v.contains(".flv") || v.contains(".ts") || v.contains("url="));
+        return total > 0 ? total : page * Math.max(size, 18);
     }
 
     private String withQuery(String path, String... kv) {
@@ -745,12 +646,35 @@ public class Msj extends Spider {
         return sb.toString();
     }
 
+    private void appendQueryParam(StringBuilder sb, String key, String value) {
+        sb.append(sb.indexOf("?") >= 0 ? "&" : "?");
+        sb.append(enc(key)).append("=").append(enc(value));
+    }
+
     private String enc(String value) {
         try {
             return URLEncoder.encode(value == null ? "" : value, "UTF-8");
         } catch (Throwable e) {
             return value == null ? "" : value;
         }
+    }
+
+    private int safePage(String pg) {
+        try {
+            return Math.max(1, Integer.parseInt(pg));
+        } catch (Throwable e) {
+            return 1;
+        }
+    }
+
+    private boolean isVideo(String url) {
+        if (url == null) return false;
+        try {
+            if (Util.isVideoFormat(url)) return true;
+        } catch (Throwable ignored) {
+        }
+        String v = url.toLowerCase();
+        return v.startsWith("http") && (v.contains(".m3u8") || v.contains(".mp4") || v.contains(".flv") || v.contains(".ts"));
     }
 
     private String cleanBase(String value) {
@@ -761,17 +685,27 @@ public class Msj extends Spider {
     }
 
     private String cleanPrefix(String value) {
-        if (value == null || value.trim().length() == 0) return "";
+        if (value == null || value.trim().isEmpty()) return "";
         value = value.trim();
         if (!value.startsWith("/")) value = "/" + value;
         while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
         return value;
     }
 
-    private String join(List<String> list, String sep) {
+    private void addClass(JSONArray classes, String id, String name) {
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("type_id", id);
+            obj.put("type_name", name);
+            classes.put(obj);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private String join(ArrayList<String> list, String sep) {
         StringBuilder sb = new StringBuilder();
         for (String item : list) {
-            if (item == null || item.length() == 0) continue;
+            if (item == null || item.isEmpty()) continue;
             if (sb.length() > 0) sb.append(sep);
             sb.append(item);
         }
