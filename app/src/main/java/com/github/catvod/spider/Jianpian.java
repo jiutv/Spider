@@ -31,6 +31,7 @@ import okhttp3.Response;
 public class Jianpian extends Spider {
 
     private static final String SITE_URL = "https://japi.zxfmj.com";
+    // 固定使用 img.cqbqr.com，API返回的 static.ztcuc.com 已失效(DNS解析失败)
     private static final String IMG_DOMAIN = "img.cqbqr.com";
     private static final Pattern CR_TAG = Pattern.compile("\\[a=cr:[^\\]]+\\]|\\[/a\\]");
 
@@ -47,7 +48,8 @@ public class Jianpian extends Spider {
     private static final List<String> TYPE_NAMES = Arrays.asList("Netflix", "电影", "电视剧", "短剧", "动漫", "综艺", "纪录片");
 
     private final OkHttpClient client = new OkHttpClient();
-    private String imgDomain = IMG_DOMAIN;
+    // 固定使用可用域名，不动态获取（API返回的域名已失效）
+    private final String imgDomain = IMG_DOMAIN;
 
     private Map<String, String> getHeader() {
         Map<String, String> headers = new HashMap<>();
@@ -59,20 +61,8 @@ public class Jianpian extends Spider {
 
     @Override
     public void init(Context context, String extend) {
-        try {
-            String json = get(SITE_URL + "/api/appAuthConfig");
-            if (!TextUtils.isEmpty(json)) {
-                JSONObject root = new JSONObject(json);
-                JSONObject data = root.optJSONObject("data");
-                if (data != null && data.has("imgDomain")) {
-                    String domain = data.optString("imgDomain");
-                    if (!TextUtils.isEmpty(domain)) {
-                        imgDomain = domain;
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
+        // 不再从API获取imgDomain，因为API返回的static.ztcuc.com已失效
+        // 固定使用 img.cqbqr.com
     }
 
     @Override
@@ -116,7 +106,7 @@ public class Jianpian extends Spider {
 
         try {
             if (tid.equals("50") || tid.equals("99") || tid.equals("67")) {
-                // 短剧/Netflix/纪录片 使用短剧接口
+                // 短剧/Netflix/纪录片 使用 dyTag 接口
                 String cidVal = "";
                 String sortVal = "update";
                 if (extend != null) {
@@ -153,7 +143,7 @@ public class Jianpian extends Spider {
                         }
                     }
                 } else {
-                    // 短剧分页 list
+                    // 短剧/Netflix/纪录片 分页 list
                     String url = SITE_URL + String.format("/api/dyTag/list?category_id=%s&page=%s", tid, pg);
                     JSONObject root = new JSONObject(get(url));
                     JSONArray data = root.optJSONArray("data");
@@ -161,12 +151,14 @@ public class Jianpian extends Spider {
                         for (int i = 0; i < data.length(); i++) {
                             JSONObject item = data.optJSONObject(i);
                             if (item != null) {
-                                JSONArray dataList = item.optJSONArray("data_list");
+                                // 修正：API返回字段名是 dataList 不是 data_list
+                                JSONArray dataList = item.optJSONArray("dataList");
+                                if (dataList == null) dataList = item.optJSONArray("data_list");
                                 if (dataList != null) {
                                     for (int j = 0; j < dataList.length(); j++) {
                                         JSONObject dataItem = dataList.optJSONObject(j);
                                         if (dataItem != null) {
-                                            list.add(parseVod(dataItem));
+                                            list.add(parseShortVod(dataItem));
                                         }
                                     }
                                 }
@@ -225,8 +217,51 @@ public class Jianpian extends Spider {
         ArrayList<Vod> empty = new ArrayList<>();
         if (ids == null || ids.isEmpty()) return Result.string(empty);
 
+        String vid = ids.get(0);
+
         try {
-            String url = SITE_URL + "/api/video/detailv2?id=" + ids.get(0);
+            // 先尝试短剧详情接口（短剧ID和影视ID不重叠，短剧用 detail/short）
+            // 短剧详情接口用 vid 参数，返回 playlist 数组含直链MP4
+            String shortUrl = SITE_URL + "/api/detail/short?vid=" + vid;
+            JSONObject shortRoot = new JSONObject(get(shortUrl));
+            JSONObject shortData = shortRoot.optJSONObject("data");
+
+            if (shortData != null && shortData.has("playlist")) {
+                // 确认是短剧
+                Vod vod = new Vod();
+                vod.setVodId(vid);
+                vod.setVodName(shortData.optString("title"));
+                vod.setVodPic(fixImageUrl(shortData.optString("cover_image")));
+                vod.setVodContent(shortData.optString("description"));
+                vod.setTypeName("短剧");
+                vod.setVodRemarks(shortData.optString("episodes_count") + "集");
+
+                // 解析 playlist（直链MP4列表）
+                JSONArray playlist = shortData.optJSONArray("playlist");
+                ArrayList<String> itemList = new ArrayList<>();
+                if (playlist != null) {
+                    for (int j = 0; j < playlist.length(); j++) {
+                        JSONObject ep = playlist.optJSONObject(j);
+                        if (ep != null) {
+                            String title = ep.optString("title");
+                            if (TextUtils.isEmpty(title)) title = "第" + (j + 1) + "集";
+                            String playUrl = ep.optString("url");
+                            if (!TextUtils.isEmpty(playUrl)) {
+                                itemList.add(title + "$" + playUrl);
+                            }
+                        }
+                    }
+                }
+
+                if (!itemList.isEmpty()) {
+                    vod.setVodPlayFrom("常规线路");
+                    vod.setVodPlayUrl(join("#", itemList));
+                }
+                return Result.string(vod);
+            }
+
+            // 不是短剧，走影视详情接口
+            String url = SITE_URL + "/api/video/detailv2?id=" + vid;
             JSONObject root = new JSONObject(get(url));
             JSONObject data = root.optJSONObject("data");
             if (data == null) return Result.string(empty);
@@ -412,10 +447,12 @@ public class Jianpian extends Spider {
         if (TextUtils.isEmpty(title)) title = item.optString("vod_name");
         if (TextUtils.isEmpty(title)) title = item.optString("original_name");
 
-        // 封面图：优先 tvimg，其次 thumbnail，再次 cover_image，最后 img
+        // 封面图：优先 tvimg/path，其次 thumbnail，最后 cover_image
         String pic = "";
         if (item.has("tvimg") && !item.isNull("tvimg")) {
             pic = item.optString("tvimg");
+        } else if (item.has("path") && !item.isNull("path")) {
+            pic = item.optString("path");
         } else if (item.has("thumbnail") && !item.isNull("thumbnail")) {
             pic = item.optString("thumbnail");
         } else if (item.has("cover_image") && !item.isNull("cover_image")) {
@@ -429,14 +466,17 @@ public class Jianpian extends Spider {
 
         // 简介/备注
         String remarks = "";
-        if (item.has("mask")) {
+        if (item.has("mask") && !item.isNull("mask")) {
             remarks = item.optString("mask");
         } else if (item.has("remarks")) {
             remarks = item.optString("remarks");
         } else if (item.has("vod_remarks")) {
             remarks = item.optString("vod_remarks");
-        } else if (item.has("score")) {
-            remarks = item.optString("score") + "分";
+        } else if (item.has("score") && !item.isNull("score")) {
+            String score = item.optString("score");
+            if (!score.equals("0") && !score.equals("0.0")) {
+                remarks = score + "分";
+            }
         }
 
         if (TextUtils.isEmpty(id) || TextUtils.isEmpty(title)) {
@@ -457,6 +497,10 @@ public class Jianpian extends Spider {
         String rawImg = "";
         if (item.has("cover_image") && !item.isNull("cover_image")) {
             rawImg = item.optString("cover_image");
+        } else if (item.has("tvimg") && !item.isNull("tvimg")) {
+            rawImg = item.optString("tvimg");
+        } else if (item.has("path") && !item.isNull("path")) {
+            rawImg = item.optString("path");
         } else if (item.has("img")) {
             rawImg = item.optString("img");
         }
