@@ -43,7 +43,7 @@ import okhttp3.Response;
  * Usage:
  * Put this Java file into your TVBox spider project and configure extend:
  *
- *   {"baseUrl":"https://your-real-domain.com","prefix":"","token":""}
+ *   {"baseUrl":"http://66.11.117.11:998","prefix":"/apptov5","token":""}
  *
  * If the real API requires the /apptov5 prefix, use:
  *
@@ -55,15 +55,15 @@ import okhttp3.Response;
  *
  * it will be used as baseUrl directly.
  */
-public class ApptoSpider extends Spider {
+public class Msj extends Spider {
 
     private final OkHttpClient client = new OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
             .build();
 
-    private String baseUrl = "";
-    private String prefix = "";
+    private String baseUrl = "http://66.11.117.11:998";
+    private String prefix = "/apptov5";
     private String token = "";
     private String userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36 Edg/101.0.1210.39";
 
@@ -74,8 +74,10 @@ public class ApptoSpider extends Spider {
             extend = extend.trim();
             if (extend.startsWith("{")) {
                 JSONObject ext = new JSONObject(extend);
-                baseUrl = cleanBase(ext.optString("baseUrl", ext.optString("url", "")));
-                prefix = cleanPrefix(ext.optString("prefix", ""));
+                String extBaseUrl = cleanBase(ext.optString("baseUrl", ext.optString("url", "")));
+                String extPrefix = cleanPrefix(ext.optString("prefix", ""));
+                if (extBaseUrl.length() > 0) baseUrl = extBaseUrl;
+                if (extPrefix.length() > 0) prefix = extPrefix;
                 token = ext.optString("token", "");
                 userAgent = ext.optString("ua", userAgent);
             } else if (extend.startsWith("http")) {
