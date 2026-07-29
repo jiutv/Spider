@@ -84,7 +84,7 @@ public class Jianpian extends Spider {
         try {
             return Result.string(classes, new JSONObject(FILTER_JSON));
         } catch (Exception e) {
-            return Result.string(classes);
+            return Result.string(classes, new ArrayList<Vod>());
         }
     }
 
