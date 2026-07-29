@@ -15,8 +15,10 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import okhttp3.OkHttpClient;
@@ -81,7 +83,9 @@ public class Jianpian extends Spider {
     @Override
     public String homeVideoContent() {
         ArrayList<Vod> list = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
         try {
+            // 首页轮播：pos_id=88，真实影片ID在 jump_id，图片优先 thumbnail/pc_thumbnail
             String url = SITE_URL + "/api/slide/list?pos_id=88";
             JSONObject root = new JSONObject(get(url));
             JSONArray data = root.optJSONArray("data");
@@ -89,10 +93,19 @@ public class Jianpian extends Spider {
                 for (int i = 0; i < data.length(); i++) {
                     JSONObject item = data.optJSONObject(i);
                     if (item != null) {
-                        list.add(parseShortVod(item));
+                        addVod(list, ids, parseVod(item));
                     }
                 }
             }
+
+            // 首页内容太少时，按APP分类聚合更多推荐
+            addDyTagHome(list, ids, "99", 12); // Netflix
+            addCrumbHome(list, ids, "1", 12);  // 电影
+            addCrumbHome(list, ids, "2", 12);  // 电视剧
+            addDyTagHome(list, ids, "67", 12); // 短剧
+            addCrumbHome(list, ids, "3", 8);   // 动漫
+            addCrumbHome(list, ids, "4", 8);   // 综艺
+            addDyTagHome(list, ids, "50", 8);  // 纪录片
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -421,6 +434,57 @@ public class Jianpian extends Spider {
         return Result.string(list);
     }
 
+    private void addVod(ArrayList<Vod> list, Set<String> ids, Vod vod) {
+        if (vod == null) return;
+        String id = vod.getVodId();
+        if (TextUtils.isEmpty(id) || ids.contains(id)) return;
+        ids.add(id);
+        list.add(vod);
+    }
+
+    private void addCrumbHome(ArrayList<Vod> list, Set<String> ids, String tid, int max) {
+        try {
+            String url = SITE_URL + "/api/crumb/list?fcate_pid=" + tid + "&category_id=&area=&year=&type=&sort=update&page=1";
+            JSONObject root = new JSONObject(get(url));
+            JSONArray data = root.optJSONArray("data");
+            if (data == null) return;
+            int count = 0;
+            for (int i = 0; i < data.length() && count < max; i++) {
+                JSONObject item = data.optJSONObject(i);
+                if (item == null) continue;
+                int before = list.size();
+                addVod(list, ids, parseVod(item));
+                if (list.size() > before) count++;
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void addDyTagHome(ArrayList<Vod> list, Set<String> ids, String tid, int max) {
+        try {
+            String url = SITE_URL + "/api/dyTag/list?category_id=" + tid + "&page=1";
+            JSONObject root = new JSONObject(get(url));
+            JSONArray data = root.optJSONArray("data");
+            if (data == null) return;
+            int count = 0;
+            for (int i = 0; i < data.length() && count < max; i++) {
+                JSONObject group = data.optJSONObject(i);
+                if (group == null) continue;
+                JSONArray dataList = group.optJSONArray("dataList");
+                if (dataList == null) dataList = group.optJSONArray("data_list");
+                if (dataList == null) continue;
+                for (int j = 0; j < dataList.length() && count < max; j++) {
+                    JSONObject item = dataList.optJSONObject(j);
+                    if (item == null) continue;
+                    int before = list.size();
+                    addVod(list, ids, parseShortVod(item));
+                    if (list.size() > before) count++;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private String get(String url) throws Exception {
         Request.Builder builder = new Request.Builder().url(url);
         for (Map.Entry<String, String> entry : getHeader().entrySet()) {
@@ -443,20 +507,36 @@ public class Jianpian extends Spider {
 
     private Vod parseVod(JSONObject item) {
         String id = item.optString("id");
+        // 首页轮播真实影片ID在 jump_id，不是轮播自身 id
+        if (item.has("jump_id") && !item.isNull("jump_id") && !TextUtils.isEmpty(item.optString("jump_id"))) {
+            id = item.optString("jump_id");
+        }
         String title = item.optString("title");
         if (TextUtils.isEmpty(title)) title = item.optString("vod_name");
         if (TextUtils.isEmpty(title)) title = item.optString("original_name");
 
-        // 封面图：优先 tvimg/path，其次 thumbnail，最后 cover_image
+        // 封面图：兼容首页轮播、普通分类、短剧、搜索等不同字段
         String pic = "";
-        if (item.has("tvimg") && !item.isNull("tvimg")) {
+        if (item.has("thumbnail") && !item.isNull("thumbnail")) {
+            pic = item.optString("thumbnail");
+        } else if (item.has("pc_thumbnail") && !item.isNull("pc_thumbnail")) {
+            pic = item.optString("pc_thumbnail");
+        } else if (item.has("tvimg") && !item.isNull("tvimg")) {
             pic = item.optString("tvimg");
         } else if (item.has("path") && !item.isNull("path")) {
             pic = item.optString("path");
+        } else if (item.has("tagimg") && !item.isNull("tagimg")) {
+            pic = item.optString("tagimg");
+        } else if (item.has("macimg") && !item.isNull("macimg")) {
+            pic = item.optString("macimg");
+        } else if (item.has("cover") && !item.isNull("cover")) {
+            pic = item.optString("cover");
         } else if (item.has("thumbnail") && !item.isNull("thumbnail")) {
             pic = item.optString("thumbnail");
         } else if (item.has("cover_image") && !item.isNull("cover_image")) {
             pic = item.optString("cover_image");
+        } else if (item.has("image") && !item.isNull("image")) {
+            pic = item.optString("image");
         } else if (item.has("img")) {
             pic = item.optString("img");
         } else if (item.has("vod_pic")) {
@@ -489,6 +569,9 @@ public class Jianpian extends Spider {
         // 短剧专用解析（cover_image 字段）
         String id = "";
         if (item.has("id") && !item.isNull("id")) id = item.optString("id");
+        if (item.has("jump_id") && !item.isNull("jump_id") && !TextUtils.isEmpty(item.optString("jump_id"))) {
+            id = item.optString("jump_id");
+        }
         String title = "";
         if (item.has("title") && !item.isNull("title")) title = item.optString("title");
         String mask = "";
@@ -497,10 +580,22 @@ public class Jianpian extends Spider {
         String rawImg = "";
         if (item.has("cover_image") && !item.isNull("cover_image")) {
             rawImg = item.optString("cover_image");
+        } else if (item.has("thumbnail") && !item.isNull("thumbnail")) {
+            rawImg = item.optString("thumbnail");
+        } else if (item.has("pc_thumbnail") && !item.isNull("pc_thumbnail")) {
+            rawImg = item.optString("pc_thumbnail");
         } else if (item.has("tvimg") && !item.isNull("tvimg")) {
             rawImg = item.optString("tvimg");
         } else if (item.has("path") && !item.isNull("path")) {
             rawImg = item.optString("path");
+        } else if (item.has("tagimg") && !item.isNull("tagimg")) {
+            rawImg = item.optString("tagimg");
+        } else if (item.has("macimg") && !item.isNull("macimg")) {
+            rawImg = item.optString("macimg");
+        } else if (item.has("cover") && !item.isNull("cover")) {
+            rawImg = item.optString("cover");
+        } else if (item.has("image") && !item.isNull("image")) {
+            rawImg = item.optString("image");
         } else if (item.has("img")) {
             rawImg = item.optString("img");
         }
