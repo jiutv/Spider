@@ -271,9 +271,11 @@ public class KuGou extends Spider {
 
         try {
             if (id.startsWith("mp3_")) {
-                playUrl = id.substring("mp3_".length());
+                playUrl = parseMp3(id);
             } else if (id.startsWith("kugou-mp3_")) {
                 playUrl = parseMp3(id);
+            } else if (id.startsWith("mv_")) {
+                playUrl = parseMv(id);
             } else if (id.startsWith("kugou-mv_")) {
                 playUrl = parseMv(id);
             }
@@ -294,10 +296,18 @@ public class KuGou extends Spider {
     }
 
     private String parseMp3(String id) {
-        String[] parts = id.split("_");
-        if (parts.length < 2) return "";
+        String body;
+        if (id.startsWith("kugou-mp3_")) {
+            body = id.substring("kugou-mp3_".length());
+        } else if (id.startsWith("mp3_")) {
+            body = id.substring("mp3_".length());
+        } else {
+            body = id;
+        }
+        String[] parts = body.split("_");
+        if (parts.length < 1 || TextUtils.isEmpty(parts[0])) return "";
 
-        String hash = parts[1];
+        String hash = parts[0];
         JSONObject json = requestJson(String.format(KUGOU_SONG_INFO, hash));
 
         String playUrl = json.optString("url");
@@ -400,10 +410,17 @@ public class KuGou extends Spider {
     }
 
     private String parseMv(String id) {
-        String[] parts = id.split("_");
-        if (parts.length < 2) return "";
+        String hash;
+        if (id.startsWith("kugou-mv_")) {
+            hash = id.substring("kugou-mv_".length());
+        } else if (id.startsWith("mv_")) {
+            hash = id.substring("mv_".length());
+        } else {
+            hash = id;
+        }
+        if (TextUtils.isEmpty(hash)) return "";
 
-        JSONObject root = requestJson(String.format(KUGOU_MV_INFO, parts[1]));
+        JSONObject root = requestJson(String.format(KUGOU_MV_INFO, hash));
         JSONObject mvdata = root.optJSONObject("mvdata");
         if (mvdata == null) return "";
 
