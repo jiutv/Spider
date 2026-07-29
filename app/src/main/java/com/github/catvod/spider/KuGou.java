@@ -152,11 +152,11 @@ public class KuGou extends Spider {
                 String classify = item.optString("classify");
                 boolean keep;
                 if ("hot".equals(tid)) {
-                    keep = !("1".equals(classify) || "2".equals(classify));
+                    keep = "1".equals(classify);
                 } else if ("special".equals(tid)) {
-                    keep = "2".equals(classify) || "5".equals(classify);
+                    keep = "5".equals(classify);
                 } else if ("global".equals(tid)) {
-                    keep = "4".equals(classify) || "2".equals(classify);
+                    keep = "4".equals(classify);
                 } else {
                     keep = false;
                 }
