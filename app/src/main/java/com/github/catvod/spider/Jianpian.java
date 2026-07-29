@@ -81,7 +81,11 @@ public class Jianpian extends Spider {
         for (int i = 0; i < TYPE_IDS.size(); i++) {
             classes.add(new Class(TYPE_IDS.get(i), TYPE_NAMES.get(i)));
         }
-        return Result.string(classes, new JSONObject(FILTER_JSON));
+        try {
+            return Result.string(classes, new JSONObject(FILTER_JSON));
+        } catch (Exception e) {
+            return Result.string(classes);
+        }
     }
 
     @Override
