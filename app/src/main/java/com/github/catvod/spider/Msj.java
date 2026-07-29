@@ -23,10 +23,10 @@ import java.util.List;
  */
 public class Msj extends Spider {
 
-    private String baseUrl = "https://japi.zxfmj.com";
-    private String prefix = "";
+    private String baseUrl = "http://66.11.117.11:998";
+    private String prefix = "/apptov5";
     private String token = "";
-    private String ua = "Dalvik/2.1.0";
+    private String ua = "Dart/2.19 (dart:io)";
 
     @Override
     public void init(Context context, String extend) throws Exception {
@@ -105,12 +105,14 @@ public class Msj extends Spider {
             } else {
                 String path = withQuery("/v1/vod/lists",
                         "type_id", tid,
-                        "category_id", tid,
-                        "categoryId", tid,
-                        "tid", tid,
+                        "area", "",
+                        "lang", "",
+                        "year", "",
+                        "order", "time",
+                        "type_name", "",
                         "page", String.valueOf(page),
-                        "pg", String.valueOf(page),
-                        "limit", "18");
+                        "pageSize", "21",
+                        "__platform", "android");
                 path = appendFilterQuery(path, extend);
                 json = fetchJson(path);
             }
@@ -218,8 +220,7 @@ public class Msj extends Spider {
         HashMap<String, String> headers = new HashMap<>();
         headers.put("User-Agent", ua);
         headers.put("Accept", "application/json,text/plain,*/*");
-        headers.put("__APPTO", "1");
-        headers.put("__deviceId", "tvbox");
+        headers.put("appto-local-uuid", "89219358-1cf1-4a45-8420-f684d7db5845");
         if (token != null && !token.isEmpty()) {
             headers.put("token", token);
             headers.put("authorization", token);
@@ -237,14 +238,18 @@ public class Msj extends Spider {
 
     private JSONArray defaultClasses() {
         JSONArray arr = new JSONArray();
-        addClass(arr, "latest", "最新");
-        addClass(arr, "ranking", "排行榜");
-        addClass(arr, "scheduling", "追剧日程");
-        addClass(arr, "movie", "电影");
-        addClass(arr, "tvplay", "电视剧");
-        addClass(arr, "tvshow", "综艺");
-        addClass(arr, "comic", "动漫");
-        addClass(arr, "movie_4k", "4K");
+        addClass(arr, "home", "推荐");
+        addClass(arr, "2", "电视剧");
+        addClass(arr, "1", "电影");
+        addClass(arr, "3", "综艺");
+        addClass(arr, "4", "动漫");
+        addClass(arr, "23", "少儿");
+        addClass(arr, "36", "短剧");
+        addClass(arr, "14", "港台剧");
+        addClass(arr, "15", "日韩剧");
+        addClass(arr, "16", "欧美剧");
+        addClass(arr, "38", "电影解说");
+        addClass(arr, "37", "纪录片");
         return arr;
     }
 
@@ -286,22 +291,51 @@ public class Msj extends Spider {
     private JSONObject buildFilters(JSONArray classes) {
         JSONObject filters = new JSONObject();
         try {
-            JSONArray common = new JSONArray();
-            common.put(filterItem("class", "类型", "全部=", "喜剧=喜剧", "爱情=爱情", "恐怖=恐怖", "动作=动作", "科幻=科幻", "剧情=剧情", "战争=战争", "犯罪=犯罪", "动画=动画", "悬疑=悬疑", "纪录=纪录"));
-            common.put(filterItem("area", "地区", "全部=", "大陆=大陆", "香港=香港", "台湾=台湾", "美国=美国", "韩国=韩国", "日本=日本", "泰国=泰国", "英国=英国", "法国=法国", "印度=印度", "其他=其他"));
-            common.put(filterItem("lang", "语言", "全部=", "国语=国语", "粤语=粤语", "英语=英语", "韩语=韩语", "日语=日语", "泰语=泰语", "其他=其他"));
-            common.put(filterItem("year", "年份", "全部=", "2026=2026", "2025=2025", "2024=2024", "2023=2023", "2022=2022", "2021=2021", "2020=2020", "2019=2019", "2018=2018", "2017=2017", "2016=2016"));
-            common.put(filterItem("排序", "排序", "全部=", "最新=time", "最热=hits", "评分=score"));
-
             for (int i = 0; i < classes.length(); i++) {
                 JSONObject item = classes.optJSONObject(i);
                 if (item == null) continue;
                 String typeId = item.optString("type_id", "");
-                if (!typeId.isEmpty()) filters.put(typeId, common);
+                if (!typeId.isEmpty()) filters.put(typeId, filterForType(typeId));
             }
         } catch (Throwable ignored) {
         }
         return filters;
+    }
+
+    private JSONArray filterForType(String typeId) throws Exception {
+        JSONArray arr = new JSONArray();
+        if ("2".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "古装=古装", "香港=香港", "台湾=台湾", "战争=战争", "青春=青春", "偶像=偶像", "爱情=爱情", "悬疑=悬疑", "犯罪=犯罪"));
+            arr.put(filterItem("area", "地区", "全部=", "内地=内地", "大陆=大陆", "中国大陆=中国大陆", "国产=国产", "香港=香港", "台湾=台湾", "美国=美国", "韩国=韩国", "日本=日本", "泰国=泰国"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "粤语=粤语", "广东话=广东话", "普通话=普通话", "英语=英语", "韩语=韩语", "日语=日语", "泰语=泰语"));
+        } else if ("3".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "选秀=选秀", "情感=情感", "访谈=访谈", "播报=播报", "旅游=旅游", "音乐=音乐", "真人秀=真人秀", "脱口秀=脱口秀"));
+            arr.put(filterItem("area", "地区", "全部=", "内地=内地", "大陆=大陆", "香港=香港", "台湾=台湾", "美国=美国", "法国=法国", "韩国=韩国", "日本=日本"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "粤语=粤语", "广东话=广东话", "普通话=普通话", "英语=英语", "韩语=韩语", "日语=日语"));
+        } else if ("4".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "情感=情感", "科幻=科幻", "热血=热血", "推理=推理", "搞笑=搞笑", "冒险=冒险", "奇幻=奇幻", "校园=校园"));
+            arr.put(filterItem("area", "地区", "全部=", "内地=内地", "大陆=大陆", "香港=香港", "台湾=台湾", "美国=美国", "法国=法国", "日本=日本", "韩国=韩国"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "粤语=粤语", "广东话=广东话", "普通话=普通话", "英语=英语", "日语=日语", "韩语=韩语"));
+        } else if ("14".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "香港=香港", "台湾=台湾", "警匪=警匪", "悬疑=悬疑", "罪案=罪案", "青春=青春", "爱情=爱情"));
+            arr.put(filterItem("area", "地区", "全部=", "香港=香港", "台湾=台湾", "中国香港=中国香港", "中国台湾=中国台湾", "其它=其它"));
+            arr.put(filterItem("lang", "语言", "全部=", "粤语=粤语", "国语=国语", "广东话=广东话", "普通话=普通话", "英语=英语"));
+        } else if ("15".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "日韩=日韩", "韩国=韩国", "爱情=爱情", "古装=古装", "战争=战争", "青春=青春", "悬疑=悬疑"));
+            arr.put(filterItem("area", "地区", "全部=", "日本=日本", "韩国=韩国", "日韩=日韩", "泰国=泰国", "印度=印度"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "英语=英语", "粤语=粤语", "闽南语=闽南语", "韩语=韩语", "日语=日语"));
+        } else if ("16".equals(typeId)) {
+            arr.put(filterItem("class", "类型", "全部=", "美剧=美剧", "连续=连续", "情=情", "奇幻=奇幻", "悬疑=悬疑", "欧美=欧美", "动作=动作", "科幻=科幻"));
+            arr.put(filterItem("area", "地区", "全部=", "美国=美国", "法国=法国", "英国=英国", "泰国=泰国", "日本=日本", "韩国=韩国"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "英语=英语", "泰语=泰语", "粤语=粤语", "闽南语=闽南语", "韩语=韩语"));
+        } else {
+            arr.put(filterItem("class", "类型", "全部=", "喜剧=喜剧", "爱情=爱情", "恐怖=恐怖", "动作=动作", "科幻=科幻", "灾难=灾难", "剧情=剧情", "战争=战争", "犯罪=犯罪", "动画=动画", "悬疑=悬疑", "纪录=纪录"));
+            arr.put(filterItem("area", "地区", "全部=", "内地=内地", "大陆=大陆", "香港=香港", "台湾=台湾", "美国=美国", "法国=法国", "英国=英国", "韩国=韩国", "日本=日本", "泰国=泰国", "印度=印度"));
+            arr.put(filterItem("lang", "语言", "全部=", "国语=国语", "英语=英语", "粤语=粤语", "闽南语=闽南语", "韩语=韩语", "日语=日语", "泰语=泰语"));
+        }
+        arr.put(filterItem("year", "年份", "全部=", "2026=2026", "2025=2025", "2024=2024", "2023=2023", "2022=2022", "2021=2021", "2020=2020", "2019=2019", "2018=2018", "2017=2017", "2016=2016"));
+        arr.put(filterItem("排序", "排序", "按时间=time", "按人气=hits", "按评分=score"));
+        return arr;
     }
 
     private JSONObject filterItem(String key, String name, String... pairs) throws Exception {
@@ -323,7 +357,7 @@ public class Msj extends Spider {
     private String appendFilterQuery(String path, HashMap<String, String> extend) {
         if (extend == null || extend.isEmpty()) return path;
         StringBuilder sb = new StringBuilder(path);
-        appendFilterParam(sb, extend, "class", "class", "vod_class", "type");
+        appendFilterParam(sb, extend, "class", "type_name", "class", "vod_class", "type");
         appendFilterParam(sb, extend, "area", "area", "vod_area");
         appendFilterParam(sb, extend, "lang", "lang", "vod_lang");
         appendFilterParam(sb, extend, "year", "year", "vod_year", "start");
@@ -722,3 +756,4 @@ public class Msj extends Spider {
         }
     }
 }
+
