@@ -53,8 +53,9 @@ public class AppRJ extends Spider {
         return OkHttp.post(siteUrl + path, params, getHeaders()).getBody();
     }
 
+    // =====【唯一修改处：增加 throws Exception】=====
     @Override
-    public void init(Context context, String extend) {
+    public void init(Context context, String extend) throws Exception {
         super.init(context, extend);
         if (!TextUtils.isEmpty(extend)) {
             siteUrl = extend.replaceAll("/$", "");
@@ -96,10 +97,10 @@ public class AppRJ extends Spider {
                         String vodPic = item.optString("vod_pic_thumb");
                         if (TextUtils.isEmpty(vodPic)) vodPic = item.optString("vod_pic");
                         list.add(new Vod(
-                            item.optString("vod_id"),
-                            item.optString("vod_name"),
-                            vodPic,
-                            item.optString("vod_remarks")
+                                item.optString("vod_id"),
+                                item.optString("vod_name"),
+                                vodPic,
+                                item.optString("vod_remarks")
                         ));
                     }
                 }
@@ -175,10 +176,10 @@ public class AppRJ extends Spider {
                         String vodPic = item.optString("vod_pic_thumb");
                         if (TextUtils.isEmpty(vodPic)) vodPic = item.optString("vod_pic");
                         list.add(new Vod(
-                            item.optString("vod_id"),
-                            item.optString("vod_name"),
-                            vodPic,
-                            item.optString("vod_remarks")
+                                item.optString("vod_id"),
+                                item.optString("vod_name"),
+                                vodPic,
+                                item.optString("vod_remarks")
                         ));
                     }
                 }
