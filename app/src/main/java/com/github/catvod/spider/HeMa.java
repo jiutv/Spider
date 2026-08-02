@@ -220,7 +220,8 @@ public class HeMa extends Spider {
         return null;
     }
 
-    private String m147i(Object obj) {
+    // 修复点：方法追加throws Exception，消除编译报错
+    private String m147i(Object obj) throws Exception {
         int i = 0;
         if (obj instanceof JSONArray) {
             JSONArray jSONArray = (JSONArray) obj;
