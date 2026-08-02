@@ -174,104 +174,120 @@ public class YunZhenXiang extends Spider {
         } else {
             url = String.format("%s/cache/zhaopian/%s/全部/全部/%s/%s/%d.json", textURL, tid, year, sort, page);
         }
-        return buildList(fetch(url, null), page);
+        try {
+            return buildList(fetch(url, null), page);
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return "{}";
+        }
     }
 
     @Override
-    public String detailContent(List<String> ids) throws JSONException {
+    public String detailContent(List<String> ids) {
         ensureInit();
         if (textURL == null || textURL.isEmpty()) return "{}";
         String id = ids.get(0);
         if (id == null || id.isEmpty()) return "";
         String url = String.format("%s/cache/videos/%d/%s.json?version=%s&baoming=com.baiyunvideo.app&channel=fenxiang", textURL, Integer.parseInt(id) / 1000, id, version);
-        JSONObject result = new JSONObject();
-        JSONArray list = new JSONArray();
-        String resp = fetch(url, null);
-        if (resp != null) {
-            try {
-                JSONObject data = new JSONObject(decrypt(resp.trim()));
-                JSONObject vod = new JSONObject();
-                vod.put("vod_id", id);
-                vod.put("vod_name", data.optString("videoName"));
-                String pic = data.optString("fengmiantu");
-                if (!pic.startsWith("http")) pic = resourceURL + pic;
-                vod.put("vod_pic", pic);
-                vod.put("type_name", data.optString("class"));
-                vod.put("vod_remarks", data.optString("remarks"));
-                vod.put("vod_content", String.format("主演：%s\n地区：%s\n简介：%s", data.optString("actor", "未知"), data.optString("region", ""), data.optString("blurb", "")));
-                vod.put("vod_play_from", "云帧享");
-                JSONArray playUrlList = data.optJSONArray("playUrlList");
-                List<String> episodes = new java.util.ArrayList<>();
-                if (playUrlList != null) {
-                    for (int i = 0; i < playUrlList.length(); i++) {
-                        JSONObject ep = playUrlList.getJSONObject(i);
-                        StringBuilder sb = new StringBuilder();
-                        sb.append("第").append(i + 1).append("集");
-                        episodes.add(String.format("%s$%s@@%s@@%d", ep.optString("name", sb.toString()), id, ep.optString("ji"), i));
+        JSONObject result;
+        try {
+            result = new JSONObject();
+            JSONArray list = new JSONArray();
+            String resp = fetch(url, null);
+            if (resp != null) {
+                try {
+                    JSONObject data = new JSONObject(decrypt(resp.trim()));
+                    JSONObject vod = new JSONObject();
+                    vod.put("vod_id", id);
+                    vod.put("vod_name", data.optString("videoName"));
+                    String pic = data.optString("fengmiantu");
+                    if (!pic.startsWith("http")) pic = resourceURL + pic;
+                    vod.put("vod_pic", pic);
+                    vod.put("type_name", data.optString("class"));
+                    vod.put("vod_remarks", data.optString("remarks"));
+                    vod.put("vod_content", String.format("主演：%s\n地区：%s\n简介：%s", data.optString("actor", "未知"), data.optString("region", ""), data.optString("blurb", "")));
+                    vod.put("vod_play_from", "云帧享");
+                    JSONArray playUrlList = data.optJSONArray("playUrlList");
+                    List<String> episodes = new java.util.ArrayList<>();
+                    if (playUrlList != null) {
+                        for (int i = 0; i < playUrlList.length(); i++) {
+                            JSONObject ep = playUrlList.getJSONObject(i);
+                            StringBuilder sb = new StringBuilder();
+                            sb.append("第").append(i + 1).append("集");
+                            episodes.add(String.format("%s$%s@@%s@@%d", ep.optString("name", sb.toString()), id, ep.optString("ji"), i));
+                        }
                     }
+                    vod.put("vod_play_url", TextUtils.join("#", episodes));
+                    list.put(vod);
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                vod.put("vod_play_url", TextUtils.join("#", episodes));
-                list.put(vod);
-            } catch (Exception e) {
-                e.printStackTrace();
             }
+            result.put("list", list);
+            return result.toString();
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return "{}";
         }
-        result.put("list", list);
-        return result.toString();
     }
 
     @Override
-    public String homeContent(boolean filter) throws JSONException {
+    public String homeContent(boolean filter) {
         ensureInit();
-        JSONObject result = new JSONObject();
-        JSONArray classes = new JSONArray();
-        JSONObject filters = new JSONObject();
-        String[] types = {"剧集", "电影", "综艺", "动漫", "少儿", "纪录片"};
+        try {
+            JSONObject result = new JSONObject();
+            JSONArray classes = new JSONArray();
+            JSONObject filters = new JSONObject();
+            String[] types = {"剧集", "电影", "综艺", "动漫", "少儿", "纪录片"};
 
-        JSONArray yearFilter = new JSONArray();
-        JSONObject yearItem = new JSONObject();
-        yearItem.put("n", "全部");
-        yearItem.put("v", "全部");
-        yearFilter.put(yearItem);
-        for (int i = 2026; i >= 2010; i--) {
-            JSONObject y = new JSONObject();
-            y.put("n", String.valueOf(i));
-            y.put("v", String.valueOf(i));
-            yearFilter.put(y);
+            JSONArray yearFilter = new JSONArray();
+            JSONObject yearItem = new JSONObject();
+            yearItem.put("n", "全部");
+            yearItem.put("v", "全部");
+            yearFilter.put(yearItem);
+            for (int i = 2026; i >= 2010; i--) {
+                JSONObject y = new JSONObject();
+                y.put("n", String.valueOf(i));
+                y.put("v", String.valueOf(i));
+                yearFilter.put(y);
+            }
+            JSONObject yearObj = new JSONObject();
+            yearObj.put("key", "year");
+            yearObj.put("name", "年份");
+            yearObj.put("value", yearFilter);
+
+            JSONArray sortFilter = new JSONArray();
+            JSONObject sortNew = new JSONObject();
+            sortNew.put("n", "最新");
+            sortNew.put("v", "最新");
+            sortFilter.put(sortNew);
+            JSONObject sortHot = new JSONObject();
+            sortHot.put("n", "最热");
+            sortHot.put("v", "最热");
+            sortFilter.put(sortHot);
+            JSONObject sortObj = new JSONObject();
+            sortObj.put("key", "sort");
+            sortObj.put("name", "排序");
+            sortObj.put("value", sortFilter);
+
+            JSONArray filterArr = new JSONArray();
+            filterArr.put(yearObj);
+            filterArr.put(sortObj);
+
+            for (String type : types) {
+                JSONObject cls = new JSONObject();
+                cls.put("type_name", type);
+                cls.put("type_id", type);
+                classes.put(cls);
+                filters.put(type, filterArr);
+            }
+            result.put("class", classes);
+            if (filter) result.put("filters", filters);
+            return result.toString();
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return "{}";
         }
-        JSONObject yearObj = new JSONObject();
-        yearObj.put("key", "year");
-        yearObj.put("name", "年份");
-        yearObj.put("value", yearFilter);
-
-        JSONArray sortFilter = new JSONArray();
-        JSONObject sortNew = new JSONObject();
-        sortNew.put("n", "最新");
-        sortNew.put("v", "最新");
-        sortFilter.put(sortNew);
-        JSONObject sortHot = new JSONObject();
-        sortHot.put("n", "最热");
-        sortHot.put("v", "最热");
-        sortFilter.put(sortHot);
-        JSONObject sortObj = new JSONObject();
-        sortObj.put("key", "sort");
-        sortObj.put("name", "排序");
-        sortObj.put("value", sortFilter);
-
-        JSONArray filterArr = new JSONArray();
-        filterArr.put(yearObj);
-        filterArr.put(sortObj);
-
-        for (String type : types) {
-            JSONObject cls = new JSONObject();
-            cls.put("type_name", type);
-            cls.put("type_id", type);
-            classes.put(cls);
-            filters.put(type, filterArr);
-        }
-        result.put("class", classes);
-        if (filter) result.put("filters", filters);
-        return result.toString();
     }
 
     @Override
@@ -283,7 +299,7 @@ public class YunZhenXiang extends Spider {
     }
 
     @Override
-    public String playerContent(String flag, String id, List<String> vipFlags) throws JSONException {
+    public String playerContent(String flag, String id, List<String> vipFlags) {
         ensureInit();
         Map<String, String> header = new HashMap<>();
         header.put("User-Agent", headers.get("User-Agent"));
@@ -330,6 +346,11 @@ public class YunZhenXiang extends Spider {
     public String searchContent(String key, boolean quick, String pg) {
         ensureInit();
         if (textURL == null || textURL.isEmpty()) return "{}";
-        return buildList(fetch(String.format("%s/vc/api/search/%s/%s.json", textURL, key, pg), null), Integer.parseInt(pg));
+        try {
+            return buildList(fetch(String.format("%s/vc/api/search/%s/%s.json", textURL, key, pg), null), Integer.parseInt(pg));
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return "{}";
+        }
     }
 }
