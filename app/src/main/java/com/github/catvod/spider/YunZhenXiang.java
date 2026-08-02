@@ -70,7 +70,7 @@ public class YunZhenXiang extends Spider {
                             JSONObject app = index.optJSONObject("app");
                             if (app != null) {
                                 textURL = app.optString("textURL", textURL);
-                                resourceURL = app.optString("resourceURL", resourceURL);
+                                resourceURL = app.optString("img", resourceURL);
                             }
                             JSONArray qudao = index.optJSONArray("qudao");
                             if (qudao != null && qudao.length() > 0) {
@@ -292,7 +292,11 @@ public class YunZhenXiang extends Spider {
 
     @Override
     public void init(Context context, String extend) {
-        super.init(context, extend);
+        try {
+            super.init(context, extend);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         this.ext = extend;
         headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36");
         headers.put("Accept-Language", "zh-CN,zh;q=0.9");
