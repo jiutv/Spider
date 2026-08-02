@@ -7,7 +7,6 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-import com.github.catvod.utils.Proxy;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -190,31 +189,12 @@ public class AppRJ extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
-        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
-        String sign = md5(KEY + timestamp);
-
-        String vodName = "";
         String vodUrl = "";
-        String vodIndex = "";
-
         String[] parts = id.split("\\|");
-        if (parts.length >= 1) vodName = parts[0];
         if (parts.length >= 2) {
             String[] urlParts = parts[1].split("@");
             vodUrl = urlParts[0];
-            if (urlParts.length >= 2) vodIndex = urlParts[1];
         }
-        String proxyUrl;
-        try {
-            proxyUrl = Proxy.getUrl() + "?do=danmu&vodName=" + vodName
-                    + "&vodUrl=" + vodUrl
-                    + "&vodIndex=" + vodIndex
-                    + "&sign=" + sign
-                    + "&timestamp=" + timestamp;
-        } catch (Exception e) {
-            // Proxy异常降级返回原地址
-            return Result.get().url(vodUrl).parse(0).string();
-        }
-        return Result.get().url(proxyUrl).parse(0).string();
+        return Result.get().url(vodUrl).parse(0).string();
     }
 }
