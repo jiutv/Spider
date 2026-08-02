@@ -6,8 +6,8 @@ import android.text.TextUtils;
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
-import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
+import com.github.catvod.net.OkResult;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,8 +51,8 @@ public class AppRJ extends Spider {
         String sign = md5(KEY + timestamp);
         params.put("timestamp", timestamp);
         params.put("sign", sign);
-        // 修复：移除 .body()
-        return OkHttp.post(siteUrl + path, params, getHeaders());
+        OkResult result = OkHttp.post(siteUrl + path, params, getHeaders());
+        return result.body();
     }
 
     @Override
@@ -76,10 +76,10 @@ public class AppRJ extends Spider {
                 if (typeArr != null) {
                     for (int i = 0; i < typeArr.length(); i++) {
                         JSONObject item = typeArr.getJSONObject(i);
-                        // 修复构造器
-                        Class cls = new Class<>();
-                        cls.setTypeId(item.optString("type_id"));
-                        cls.setTypeName(item.optString("type_name"));
+                        Class cls = new Class();
+                        // 【重点】旧版bean方法名：setId、setName，不是setTypeId
+                        cls.setId(item.optString("type_id"));
+                        cls.setName(item.optString("type_name"));
                         typeList.add(cls);
                     }
                 }
