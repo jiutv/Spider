@@ -29,7 +29,7 @@ public class HeMa extends Spider {
     private String f125h = "BnCMa2+Kbcl9D1ctCsHNdkR0b6tNUb4MWkCbJX2wXsVtqTKVONaSzTI3b+ulP+SEOFULO5vnXXaMNkE6Gcy7K0g==";
     private String f126i = "";
 
-    private String m141a(String str, JSONObject jSONObject) throws JSONException {
+    private String m141a(String str, JSONObject jSONObject) throws Exception {
         String string = jSONObject.toString();
         String url = "https://freevideo.zqqds.cn/free-video-portal/portal/" + str;
         JSONObject jSONObject2 = new JSONObject();
@@ -338,7 +338,7 @@ public class HeMa extends Spider {
         return "";
     }
 
-    private Object m153o(String str) {
+    private Object m153o(String str) throws Exception {
         if (TextUtils.isEmpty(str)) {
             return new JSONObject();
         }
@@ -350,7 +350,7 @@ public class HeMa extends Spider {
         list.add(new Filter.Value(str, str2));
     }
 
-    public String categoryContent(String str, String str2, boolean z, HashMap<String, String> map) throws JSONException {
+    public String categoryContent(String str, String str2, boolean z, HashMap<String, String> map) throws Exception {
         int i;
         try {
             i = Integer.parseInt(str2);
@@ -449,7 +449,7 @@ public class HeMa extends Spider {
         return Result.get().vod(arrayList).page(i, Integer.MAX_VALUE, Math.max(arrayList.size(), 1), Integer.MAX_VALUE).string();
     }
 
-    public String detailContent(List<String> list) throws JSONException {
+    public String detailContent(List<String> list) throws Exception {
         String str = list.get(0);
         JSONObject jSONObject = new JSONObject();
         jSONObject.put("bookId", str);
@@ -551,11 +551,12 @@ public class HeMa extends Spider {
         return Result.string(arrayList, linkedHashMap);
     }
 
-    public String homeVideoContent() {
+    public String homeVideoContent() throws Exception {
         return categoryContent("drama_all", "1", false, new HashMap<>());
     }
 
-    public void init(Context context, String str) {
+    @Override
+    public void init(Context context, String str) throws Exception {
         super.init(context, str);
         this.f126i = "https://www.tangsan.fun/hema.php";
         if (TextUtils.isEmpty(str)) {
@@ -572,7 +573,7 @@ public class HeMa extends Spider {
         this.f125h = jSONObject.optString("boxId", this.f125h);
     }
 
-    public String playerContent(String str, String str2, List<String> list) throws JSONException {
+    public String playerContent(String str, String str2, List<String> list) throws Exception {
         String errorMsg;
         String[] strArrSplit = str2.split("\\|\\|\\|");
         String str3 = strArrSplit.length > 0 ? strArrSplit[0] : "";
@@ -617,11 +618,11 @@ public class HeMa extends Spider {
         return Result.error(errorMsg);
     }
 
-    public String searchContent(String str, boolean z) {
+    public String searchContent(String str, boolean z) throws Exception {
         return searchContent(str, z, "1");
     }
 
-    public String searchContent(String str, boolean z, String str2) throws JSONException {
+    public String searchContent(String str, boolean z, String str2) throws Exception {
         int i;
         try {
             i = Integer.parseInt(str2);
