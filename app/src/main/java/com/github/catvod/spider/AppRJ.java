@@ -52,19 +52,20 @@ public class AppRJ extends Spider {
         params.put("timestamp", timestamp);
         params.put("sign", sign);
         OkResult result = OkHttp.post(siteUrl + path, params, getHeaders());
-        return result.body();
+        // 修复点：result.body() → result.string()
+        return result.string();
     }
 
     @Override
     public void init(Context context, String extend) throws Exception {
-        super.init(context, extend);
+        // 修复点：父类无super.init(context,extend)，直接删除，消除报错
         if (!TextUtils.isEmpty(extend)) {
             siteUrl = extend.replaceAll("/$", "");
         }
     }
 
     @Override
-    public String homeContent(boolean filter) {
+    public String homeContent(boolean filter) throws Exception {
         List<Vod> homeVideo = new ArrayList<>();
         List<Class> typeList = new ArrayList<>();
         try {
@@ -77,7 +78,6 @@ public class AppRJ extends Spider {
                     for (int i = 0; i < typeArr.length(); i++) {
                         JSONObject item = typeArr.getJSONObject(i);
                         Class cls = new Class();
-                        // 【重点】旧版bean方法名：setId、setName，不是setTypeId
                         cls.setId(item.optString("type_id"));
                         cls.setName(item.optString("type_name"));
                         typeList.add(cls);
@@ -105,7 +105,7 @@ public class AppRJ extends Spider {
     }
 
     @Override
-    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
+    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         int page = TextUtils.isEmpty(pg) ? 1 : Integer.parseInt(pg);
         HashMap<String, String> params = new HashMap<>();
         params.put("type_id", tid);
@@ -149,7 +149,7 @@ public class AppRJ extends Spider {
     }
 
     @Override
-    public String detailContent(List<String> ids) {
+    public String detailContent(List<String> ids) throws Exception {
         String vodId = ids.get(0);
         HashMap<String, String> params = new HashMap<>();
         params.put("vod_id", vodId);
@@ -194,7 +194,7 @@ public class AppRJ extends Spider {
     }
 
     @Override
-    public String searchContent(String key, boolean quick) {
+    public String searchContent(String key, boolean quick) throws Exception {
         HashMap<String, String> params = new HashMap<>();
         params.put("keyword", key);
         params.put("page", "1");
@@ -227,7 +227,7 @@ public class AppRJ extends Spider {
     }
 
     @Override
-    public String playerContent(String flag, String id, List<String> vipFlags) {
+    public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         return Result.get().url(id).parse().string();
     }
 }
