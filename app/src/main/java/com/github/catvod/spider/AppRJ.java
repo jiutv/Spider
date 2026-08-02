@@ -51,7 +51,8 @@ public class AppRJ extends Spider {
         String sign = md5(KEY + timestamp);
         params.put("timestamp", timestamp);
         params.put("sign", sign);
-        return OkHttp.post(siteUrl + path, params, getHeaders()).body();
+        // 修复：移除 .body()
+        return OkHttp.post(siteUrl + path, params, getHeaders());
     }
 
     @Override
@@ -71,18 +72,17 @@ public class AppRJ extends Spider {
             JSONObject obj = new JSONObject(json);
             JSONObject data = obj.optJSONObject("data");
             if (data != null) {
-                // 解析分类
                 JSONArray typeArr = data.optJSONArray("type_list");
                 if (typeArr != null) {
                     for (int i = 0; i < typeArr.length(); i++) {
                         JSONObject item = typeArr.getJSONObject(i);
-                        Class cls = new Class();
+                        // 修复构造器
+                        Class cls = new Class<>();
                         cls.setTypeId(item.optString("type_id"));
                         cls.setTypeName(item.optString("type_name"));
                         typeList.add(cls);
                     }
                 }
-                // 解析首页推荐
                 JSONArray recArr = data.optJSONArray("recommend");
                 if (recArr != null) {
                     for (int i = 0; i < recArr.length(); i++) {
@@ -228,8 +228,6 @@ public class AppRJ extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
-        // 【重要】移除Proxy依赖！如果你需要弹幕代理再自行恢复
-        // 直接返回播放地址，规避找不到Proxy类崩溃问题
         return Result.get().url(id).parse().string();
     }
 }
