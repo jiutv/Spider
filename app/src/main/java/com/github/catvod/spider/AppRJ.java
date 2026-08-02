@@ -17,15 +17,15 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class RemoteCatalogSpider extends Spider {
+public class AppRJ extends Spider {
 
     private final OkHttpClient httpClient = new OkHttpClient();
     private String apiBase = "https://example.com/api";
 
-    public RemoteCatalogSpider() {
+    public AppRJ() {
     }
 
-    public RemoteCatalogSpider(String apiBase) {
+    public AppRJ(String apiBase) {
         this.apiBase = apiBase;
     }
 
