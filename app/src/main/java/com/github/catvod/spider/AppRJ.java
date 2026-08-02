@@ -3,6 +3,7 @@ package com.github.catvod.spider;
 import android.content.Context;
 import android.text.TextUtils;
 
+import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
@@ -50,10 +51,9 @@ public class AppRJ extends Spider {
         String sign = md5(KEY + timestamp);
         params.put("timestamp", timestamp);
         params.put("sign", sign);
-        return OkHttp.post(siteUrl + path, params, getHeaders()).getBody();
+        return OkHttp.post(siteUrl + path, params, getHeaders()).body();
     }
 
-    // ========== 关键修复点：添加 throws Exception ==========
     @Override
     public void init(Context context, String extend) throws Exception {
         super.init(context, extend);
@@ -64,7 +64,44 @@ public class AppRJ extends Spider {
 
     @Override
     public String homeContent(boolean filter) {
-        return Result.string(new ArrayList<>(), new ArrayList<>());
+        List<Vod> homeVideo = new ArrayList<>();
+        List<Class> typeList = new ArrayList<>();
+        try {
+            String json = post("/v3/home/index", new HashMap<>());
+            JSONObject obj = new JSONObject(json);
+            JSONObject data = obj.optJSONObject("data");
+            if (data != null) {
+                // 解析分类
+                JSONArray typeArr = data.optJSONArray("type_list");
+                if (typeArr != null) {
+                    for (int i = 0; i < typeArr.length(); i++) {
+                        JSONObject item = typeArr.getJSONObject(i);
+                        Class cls = new Class();
+                        cls.setTypeId(item.optString("type_id"));
+                        cls.setTypeName(item.optString("type_name"));
+                        typeList.add(cls);
+                    }
+                }
+                // 解析首页推荐
+                JSONArray recArr = data.optJSONArray("recommend");
+                if (recArr != null) {
+                    for (int i = 0; i < recArr.length(); i++) {
+                        JSONObject item = recArr.getJSONObject(i);
+                        String vodPic = item.optString("vod_pic_thumb");
+                        if (TextUtils.isEmpty(vodPic)) vodPic = item.optString("vod_pic");
+                        homeVideo.add(new Vod(
+                                item.optString("vod_id"),
+                                item.optString("vod_name"),
+                                vodPic,
+                                item.optString("vod_remarks")
+                        ));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return Result.string(typeList, homeVideo);
     }
 
     @Override
@@ -106,7 +143,7 @@ public class AppRJ extends Spider {
                 }
             }
         } catch (Exception e) {
-            // ignore
+            e.printStackTrace();
         }
         return Result.string(page, count, limit, total, list);
     }
@@ -136,23 +173,22 @@ public class AppRJ extends Spider {
 
                 JSONArray playList = data.optJSONArray("vod_play_list");
                 if (playList != null && playList.length() > 0) {
-                    List<String> playFromList = new ArrayList<>();
-                    List<String> playUrlList = new ArrayList<>();
+                    List<String> playFrom = new ArrayList<>();
+                    List<String> playUrl = new ArrayList<>();
                     for (int i = 0; i < playList.length(); i++) {
                         JSONObject source = playList.getJSONObject(i);
                         String sourceName = source.optString("name");
-                        String urls = source.optString("urls");
+                        String urlData = source.optString("urls");
                         if (TextUtils.isEmpty(sourceName)) sourceName = "线路" + (i + 1);
-                        if (TextUtils.isEmpty(urls)) urls = "";
-                        playFromList.add(sourceName);
-                        playUrlList.add(urls);
+                        playFrom.add(sourceName);
+                        playUrl.add(urlData);
                     }
-                    vod.setVodPlayFrom(TextUtils.join("$$$", playFromList));
-                    vod.setVodPlayUrl(TextUtils.join("$$$", playUrlList));
+                    vod.setVodPlayFrom(TextUtils.join("$$$", playFrom));
+                    vod.setVodPlayUrl(TextUtils.join("$$$", playUrl));
                 }
             }
         } catch (Exception e) {
-            // ignore
+            e.printStackTrace();
         }
         return Result.string(vod);
     }
@@ -185,34 +221,15 @@ public class AppRJ extends Spider {
                 }
             }
         } catch (Exception e) {
-            // ignore
+            e.printStackTrace();
         }
         return Result.string(list);
     }
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
-        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
-        String sign = md5(KEY + timestamp);
-
-        String vodName = "";
-        String vodUrl = "";
-        String vodIndex = "";
-
-        String[] parts = id.split("\\|");
-        if (parts.length >= 1) vodName = parts[0];
-        if (parts.length >= 2) {
-            String[] urlParts = parts[1].split("@");
-            vodUrl = urlParts[0];
-            if (urlParts.length >= 2) vodIndex = urlParts[1];
-        }
-
-        String proxyUrl = Proxy.getUrl() + "?do=danmu&vodName=" + vodName
-                + "&vodUrl=" + vodUrl
-                + "&vodIndex=" + vodIndex
-                + "&sign=" + sign
-                + "&timestamp=" + timestamp;
-
-        return Result.get().url(proxyUrl).parse(0).string();
+        // 【重要】移除Proxy依赖！如果你需要弹幕代理再自行恢复
+        // 直接返回播放地址，规避找不到Proxy类崩溃问题
+        return Result.get().url(id).parse().string();
     }
 }
