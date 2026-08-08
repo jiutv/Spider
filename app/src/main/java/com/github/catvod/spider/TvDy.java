@@ -23,10 +23,6 @@ import android.util.Base64;
 public class TvDy extends Spider {
 
     private static final String siteUrl = "https://www.tvdy.xyz";
-    private static final String cateUrl = siteUrl + "/search.php?tid=";
-    private static final String detailUrl = siteUrl + "/movie/";
-    private static final String searchUrl = siteUrl + "/search.php?searchword=";
-    private static final String playUrl = siteUrl + "/play/";
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -38,25 +34,39 @@ public class TvDy extends Spider {
     public String homeContent(boolean filter) throws Exception {
         List<Vod> list = new ArrayList<>();
         List<Class> classes = new ArrayList<>();
-        String[] typeIdList = {"1", "2", "3", "4", "5", "34"};
-        String[] typeNameList = {"电影", "电视剧", "综艺", "动漫", "福利", "纪录片"};
-        for (int i = 0; i < typeNameList.length; i++) {
-            classes.add(new Class(typeIdList[i], typeNameList[i]));
-        }
-        Document doc = Jsoup.parse(OkHttp.string(siteUrl, getHeaders()));
-        for (Element element : doc.select("a.stui-vodlist__thumb")) {
-            try {
-                String pic = element.attr("data-original");
-                String url = element.attr("href");
-                String name = element.attr("title");
-                if (!pic.startsWith("http")) {
-                    pic = siteUrl + pic;
-                }
-                String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
-            } catch (Exception e) {
 
+        String html = OkHttp.string(siteUrl, getHeaders());
+        Document doc = Jsoup.parse(html);
+
+        // =========动态解析导航分类，不再硬编码tid=========
+        Elements navLinks = doc.select("nav a[href*=search.php?tid]");
+        for (Element a : navLinks) {
+            String href = a.attr("href");
+            String name = a.text().trim();
+            if(name.isEmpty()) continue;
+            Matcher m = Pattern.compile("tid=(\\d+)").matcher(href);
+            if(m.find()){
+                String tid = m.group(1);
+                classes.add(new Class(tid, name));
             }
+        }
+
+        // 首页推荐列表选择器（新版页面）
+        Elements vodItems = doc.select(".vod-item");
+        for (Element item : vodItems) {
+            try {
+                Element a = item.selectFirst("a");
+                if(a == null) continue;
+                String pic = a.selectFirst("img").attr("data-original");
+                String url = a.attr("href");
+                String name = a.attr("title");
+                if (!pic.startsWith("http")) pic = siteUrl + pic;
+                // 截取id：/movie/12345.html
+                Matcher idMat = Pattern.compile("/movie/(\\d+)").matcher(url);
+                if(!idMat.find()) continue;
+                String id = idMat.group(1);
+                list.add(new Vod(id, name, pic));
+            } catch (Exception ignored) {}
         }
         return Result.string(classes, list);
     }
@@ -64,109 +74,130 @@ public class TvDy extends Spider {
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         List<Vod> list = new ArrayList<>();
-        String target = cateUrl + tid + "&searchtype=5&order=commend&page=" + pg;
-        Document doc = Jsoup.parse(OkHttp.string(target, getHeaders()));
-        for (Element element : doc.select("div.stui-vodlist__box a")) {
-            try {
-                String pic = element.attr("data-original");
-                String url = element.attr("href");
-                String name = element.attr("title");
-                if (!pic.startsWith("http")) {
-                    pic = siteUrl + pic;
-                }
-                String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
-            } catch (Exception e) {
+        // 新版分类请求地址
+        String target = siteUrl + "/search.php?tid=" + tid + "&page=" + pg;
+        String html = OkHttp.string(target, getHeaders());
+        Document doc = Jsoup.parse(html);
 
-            }
+        Elements vodItems = doc.select(".vod-item");
+        for (Element item : vodItems) {
+            try {
+                Element a = item.selectFirst("a");
+                if(a == null) continue;
+                String pic = a.selectFirst("img").attr("data-original");
+                String url = a.attr("href");
+                String name = a.attr("title");
+                if (!pic.startsWith("http")) pic = siteUrl + pic;
+                Matcher idMat = Pattern.compile("/movie/(\\d+)").matcher(url);
+                if(!idMat.find()) continue;
+                String id = idMat.group(1);
+                list.add(new Vod(id, name, pic));
+            } catch (Exception ignored) {}
         }
-        Integer total = (Integer.parseInt(pg) + 1) * 20;
-        return Result.string(Integer.parseInt(pg), Integer.parseInt(pg) + 1, 20, total, list);
+        int page = Integer.parseInt(pg);
+        return Result.string(page, page+1, 20, page*20, list);
     }
 
     @Override
     public String detailContent(List<String> ids) throws Exception {
-        Document doc = Jsoup.parse(OkHttp.string(detailUrl.concat(ids.get(0)), getHeaders()));
-        String name = doc.select("h1.title").text();
-        String pic = doc.select("a.pic img").attr("data-original");
-        String year = doc.select("p.data").get(4).text().replace("年份：","");
-        String desc = doc.select("span.detail-content").text();
+        String detailUrl = siteUrl + "/movie/" + ids.get(0) + ".html";
+        String html = OkHttp.string(detailUrl, getHeaders());
+        Document doc = Jsoup.parse(html);
 
-        // 播放源
-        Elements tabs = doc.select("div.stui-vodlist__head h4");
-        Elements list = doc.select("div.stui-vodlist__head ul");
-        String PlayFrom = "";
-        String PlayUrl = "";
-        for (int i = 0; i < tabs.size(); i++) {
-            String tabName = tabs.get(i).text();
-            if (!"".equals(PlayFrom)) {
-                PlayFrom = PlayFrom + "$$$" + tabName;
-            } else {
-                PlayFrom = PlayFrom + tabName;
+        Element titleEl = doc.selectFirst(".info-title h1");
+        String name = titleEl != null ? titleEl.text().trim() : "";
+
+        Element imgEl = doc.selectFirst(".pic-box img");
+        String pic = imgEl != null ? imgEl.attr("data-original") : "";
+        if (!pic.startsWith("http")) pic = siteUrl + pic;
+
+        String year = "";
+        Elements meta = doc.select(".info-item");
+        for(Element el : meta){
+            String text = el.text();
+            if(text.contains("年份")){
+                year = text.replace("年份：","").trim();
+                break;
             }
-            Elements li = list.get(i).select("a");
-            String liUrl = "";
-            for (int i1 = 0; i1 < li.size(); i1++) {
-                if (!"".equals(liUrl)) {
-                    liUrl = liUrl + "#" + li.get(i1).text() + "$" + li.get(i1).attr("href").replace("/play/", "");
-                } else {
-                    liUrl = liUrl + li.get(i1).text() + "$" + li.get(i1).attr("href").replace("/play/", "");
-                }
+        }
+
+        Element descEl = doc.selectFirst(".desc-content");
+        String desc = descEl != null ? descEl.text().trim() : "";
+
+        //解析播放源与集数
+        Elements sourceTabs = doc.select(".play-tab-item");
+        Elements playLists = doc.select(".play-ep-list");
+
+        StringBuilder playFrom = new StringBuilder();
+        StringBuilder playUrl = new StringBuilder();
+
+        for(int i=0;i<sourceTabs.size() && i<playLists.size();i++){
+            String sourceName = sourceTabs.get(i).text().trim();
+            if(playFrom.length()>0) playFrom.append("$$$");
+            playFrom.append(sourceName);
+
+            StringBuilder epSb = new StringBuilder();
+            Elements eps = playLists.get(i).select("a");
+            for(Element ep : eps){
+                String epName = ep.text().trim();
+                String epHref = ep.attr("href");
+                // /play/xxxx.html 提取播放id
+                Matcher m = Pattern.compile("/play/(\\d+)").matcher(epHref);
+                if(!m.find()) continue;
+                String playId = m.group(1);
+                if(epSb.length()>0) epSb.append("#");
+                epSb.append(epName).append("$").append(playId);
             }
-            if (!"".equals(PlayUrl)) {
-                PlayUrl = PlayUrl + "$$$" + liUrl;
-            } else {
-                PlayUrl = PlayUrl + liUrl;
-            }
+            if(playUrl.length()>0) playUrl.append("$$$");
+            playUrl.append(epSb);
         }
 
         Vod vod = new Vod();
         vod.setVodId(ids.get(0));
-        vod.setVodPic(siteUrl + pic);
+        vod.setVodPic(pic);
         vod.setVodYear(year);
         vod.setVodName(name);
         vod.setVodContent(desc);
-        vod.setVodPlayFrom(PlayFrom);
-        vod.setVodPlayUrl(PlayUrl);
+        vod.setVodPlayFrom(playFrom.toString());
+        vod.setVodPlayUrl(playUrl.toString());
         return Result.string(vod);
     }
 
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         List<Vod> list = new ArrayList<>();
-        Document doc = Jsoup.parse(OkHttp.string(searchUrl.concat(URLEncoder.encode(key)), getHeaders()));
-        for (Element element : doc.select("div.stui-vodlist__box a")) {
-            try {
-                String pic = element.attr("data-original");
-                String url = element.attr("href");
-                String name = element.attr("title");
-                if (!pic.startsWith("http")) {
-                    pic = siteUrl + pic;
-                }
-                String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
-            } catch (Exception e) {
+        String searchUrl = siteUrl + "/search.php?searchword=" + URLEncoder.encode(key,"UTF-8");
+        String html = OkHttp.string(searchUrl, getHeaders());
+        Document doc = Jsoup.parse(html);
 
-            }
+        Elements vodItems = doc.select(".vod-item");
+        for (Element item : vodItems) {
+            try {
+                Element a = item.selectFirst("a");
+                if(a == null) continue;
+                String pic = a.selectFirst("img").attr("data-original");
+                String url = a.attr("href");
+                String name = a.attr("title");
+                if (!pic.startsWith("http")) pic = siteUrl + pic;
+                Matcher idMat = Pattern.compile("/movie/(\\d+)").matcher(url);
+                if(!idMat.find()) continue;
+                String id = idMat.group(1);
+                list.add(new Vod(id, name, pic));
+            } catch (Exception ignored) {}
         }
         return Result.string(list);
     }
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        Document doc = Jsoup.parse(OkHttp.string(playUrl.concat(id), getHeaders()));
-        String regex = "var now=base64decode(.*?);var";
-
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(doc.html());
-        String url = doc.html();
+        String playHtml = OkHttp.string(siteUrl + "/play/" + id + ".html", getHeaders());
+        Pattern pattern = Pattern.compile("var now=base64decode\\((.*?)\\);var");
+        Matcher matcher = pattern.matcher(playHtml);
+        String playUrl = "";
         if (matcher.find()) {
-            url = decodeBase64(matcher.group(1).replace("(\\\"","").replace("\\\")",""));
+            String raw = matcher.group(1).replace("(\"","").replace("\")","");
+            playUrl = new String(Base64.decode(raw, Base64.DEFAULT));
         }
-        return Result.get().url(url).header(getHeaders()).string();
-    }
-
-    public static String decodeBase64(String encodedString) {
-        return new String(Base64.decode(encodedString, Base64.DEFAULT));
+        return Result.get().url(playUrl).header(getHeaders()).string();
     }
 }
