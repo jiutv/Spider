@@ -79,7 +79,16 @@ public class Jpys extends Spider {
         params.put("key", KEY);
         params.put("t", timestamp);
         String signValue = sign(params);
-        return OkHttp.string(url, getHeaders(timestamp, signValue));
+        StringBuilder query = new StringBuilder();
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            if (query.length() > 0) query.append("&");
+            try {
+                query.append(entry.getKey()).append("=").append(java.net.URLEncoder.encode(entry.getValue(), "UTF-8"));
+            } catch (Exception e) {
+                query.append(entry.getKey()).append("=").append(entry.getValue());
+            }
+        }
+        return OkHttp.string(url + "?" + query.toString(), getHeaders(timestamp, signValue));
     }
 
     @Override
