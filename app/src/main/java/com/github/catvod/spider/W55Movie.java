@@ -10,11 +10,8 @@ import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.AESEncryption;
-import com.github.catvod.utils.Json;
 import com.github.catvod.utils.Util;
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import org.jsoup.Jsoup;
@@ -28,18 +25,16 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class W55Movie extends Spider {
 
-    private static String siteUrl = "https://55flix.com";
+    private static String siteUrl = "https://www.555dy1.com";
     private static final String cateUrl = siteUrl + "/index.php/api/vod";
     private static String detailUrl = siteUrl + "/voddetail/";
     private static String playUrl = siteUrl + "/vodplay/";
-    private static String searchUrl = siteUrl + "/vodsearch/page/1/wd/";
+    private static String searchUrl = siteUrl + "/vodsearch/";
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -50,23 +45,20 @@ public class W55Movie extends Spider {
     @Override
     public void init(Context context, String extend) throws Exception {
         super.init(context, extend);
-        Document doc = Jsoup.parse(OkHttp.string(extend));
-
-        String data = doc.select("#domainData").attr("data-info");
-        String info = Util.base64Decode(data);
-        Map<String, Object> json = Json.parseSafe(info, Map.class);
-        siteUrl = "https://" + json.get("site_main").toString();
+        if (extend != null && !extend.isEmpty()) {
+            siteUrl = extend.replaceAll("/$", "");
+        }
         detailUrl = siteUrl + "/voddetail/";
         playUrl = siteUrl + "/vodplay/";
-        searchUrl = siteUrl + "/vodsearch/page/1/wd/";
+        searchUrl = siteUrl + "/vodsearch/";
     }
 
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Vod> list = new ArrayList<>();
         List<Class> classes = new ArrayList<>();
-        String[] typeIdList = {"/label/netflix", "/vodshow/1", "/vodshow/2", "/vodshow/124", "/vodshow/4", "/vodshow/3"};
-        String[] typeNameList = {"Netflix", "电影", "连续剧", "福利", "动漫", "综艺"};
+        String[] typeIdList = {"/label/netflix", "/vodshow/1", "/vodshow/2", "/vodshow/126", "/vodshow/4", "/vodshow/3"};
+        String[] typeNameList = {"Netflix", "电影", "连续剧", "擦边短剧", "动漫", "综艺"};
         for (int i = 0; i < typeNameList.length; i++) {
             classes.add(new Class(typeIdList[i], typeNameList[i]));
         }
@@ -76,11 +68,12 @@ public class W55Movie extends Spider {
                 String pic = element.select("img").attr("data-original");
                 String url = element.attr("href");
                 String name = element.attr("title");
+                String remark = element.select(".module-item-note").text();
                 if (!pic.startsWith("http")) {
                     pic = siteUrl + pic;
                 }
                 String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
+                list.add(new Vod(id, name, pic, remark));
             } catch (Exception e) {
             }
         }
@@ -88,13 +81,10 @@ public class W55Movie extends Spider {
     }
 
     public String MD5(String string) {
-        // 创建 MD5 实例
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            // 计算 MD5 哈希值
             byte[] hashBytes = md.digest(string.getBytes());
 
-            // 将字节数组转换为十六进制字符串表示
             StringBuilder hexString = new StringBuilder();
             for (byte hashByte : hashBytes) {
                 String hex = Integer.toHexString(0xff & hashByte);
@@ -104,8 +94,6 @@ public class W55Movie extends Spider {
                 hexString.append(hex);
             }
 
-            // 输出加密后的 MD5 字符串
-            System.out.println("MD5 加密: " + hexString.toString());
             return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -117,7 +105,7 @@ public class W55Movie extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         List<Vod> list = new ArrayList<>();
         if (tid.startsWith("/label/")) {
-            tid = tid + pg + ".html";
+            tid = tid + "/page/" + pg + ".html";
         } else {
             tid = tid + "--------" + pg + "---.html";
         }
@@ -128,11 +116,12 @@ public class W55Movie extends Spider {
                 String pic = element.select("img").attr("data-original");
                 String url = element.attr("href");
                 String name = element.attr("title");
+                String remark = element.select(".module-item-note").text();
                 if (!pic.startsWith("http")) {
                     pic = siteUrl + pic;
                 }
                 String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
+                list.add(new Vod(id, name, pic, remark));
             } catch (Exception e) {
             }
         }
@@ -196,17 +185,18 @@ public class W55Movie extends Spider {
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         List<Vod> list = new ArrayList<>();
-        Document doc = Jsoup.parse(OkHttp.string(searchUrl.concat(URLEncoder.encode(key)).concat(".html"), getHeaders()));
-        for (Element element : doc.select("a.public-list-exp")) {
+        Document doc = Jsoup.parse(OkHttp.string(searchUrl.concat(URLEncoder.encode(key)).concat("-------------.html"), getHeaders()));
+        for (Element element : doc.select(".module-card-item")) {
             try {
-                String pic = element.select("img").attr("data-src");
-                String url = element.attr("href");
-                String name = element.attr("title");
+                String pic = element.select("img").attr("data-original");
+                String url = element.select(".module-card-item-poster").attr("href");
+                String name = element.select(".module-card-item-title").text();
+                String remark = element.select(".module-item-note").text();
                 if (!pic.startsWith("http")) {
                     pic = siteUrl + pic;
                 }
                 String id = url.split("/")[2];
-                list.add(new Vod(id, name, pic));
+                list.add(new Vod(id, name, pic, remark));
             } catch (Exception e) {
             }
         }
@@ -230,23 +220,20 @@ public class W55Movie extends Spider {
             url = matcher.group(1);
             url_next = matcher.group(2);
         }
-        String encrytStr = url;// "{\"url\":\"" + url + "\",\"next_url\":\"" + url_next + "\"}";
+        String encrytStr = url;
         // 加密
-        String encrypt = AESEncryption.encrypt(encrytStr, keyString, ivString,CBC_PKCS_7_PADDING);
+        String encrypt = AESEncryption.encrypt(encrytStr, keyString, ivString, CBC_PKCS_7_PADDING);
         String encodeURI = AESEncryption.encodeURIComponent(encrypt);
         // 请求获取url
         String data = OkHttp.string("https://player.ddzyku.com:3653/get_url_v2?data=" + encodeURI);
         // 解密
-        String decrypted = AESEncryption.decrypt(data, keyString, ivString,CBC_PKCS_7_PADDING);
+        String decrypted = AESEncryption.decrypt(data, keyString, ivString, CBC_PKCS_7_PADDING);
         Gson gson = new Gson();
         JsonObject jsonObject = gson.fromJson(decrypted, JsonObject.class);
         JsonObject dataObject = jsonObject.getAsJsonObject("data");
         String url1 = "";
-        // Ensure the field exists before accessing it
         if (dataObject != null && dataObject.has("url")) {
             url1 = dataObject.get("url").getAsString();
-        } else {
-            System.out.println("Invalid JSON format or missing 'url' field.");
         }
         return Result.get().url(url1).header(getHeaders()).string();
     }
