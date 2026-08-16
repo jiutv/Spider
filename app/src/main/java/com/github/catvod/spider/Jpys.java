@@ -661,51 +661,53 @@ public class Jpys extends Spider {
      */
     private JSONArray buildFilters() {
         JSONArray filters = new JSONArray();
+        try {
+            // 类型筛选
+            JSONObject typeFilter = new JSONObject();
+            typeFilter.put("key", "class");
+            typeFilter.put("name", "类型");
+            JSONArray typeValues = new JSONArray();
+            typeValues.put(new JSONObject().put("n", "全部").put("v", ""));
+            String[] types = {"喜剧", "动作", "爱情", "科幻", "悬疑", "奇幻", "恐怖", "剧情", "犯罪", "动画", "惊悚", "战争", "冒险", "灾难", "伦理", "其他"};
+            for (String t : types) typeValues.put(new JSONObject().put("n", t).put("v", t));
+            typeFilter.put("value", typeValues);
+            filters.put(typeFilter);
 
-        // 类型筛选
-        JSONObject typeFilter = new JSONObject();
-        typeFilter.put("key", "class");
-        typeFilter.put("name", "类型");
-        JSONArray typeValues = new JSONArray();
-        typeValues.put(new JSONObject().put("n", "全部").put("v", ""));
-        String[] types = {"喜剧", "动作", "爱情", "科幻", "悬疑", "奇幻", "恐怖", "剧情", "犯罪", "动画", "惊悚", "战争", "冒险", "灾难", "伦理", "其他"};
-        for (String t : types) typeValues.put(new JSONObject().put("n", t).put("v", t));
-        typeFilter.put("value", typeValues);
-        filters.put(typeFilter);
+            // 地区筛选
+            JSONObject areaFilter = new JSONObject();
+            areaFilter.put("key", "area");
+            areaFilter.put("name", "地区");
+            JSONArray areaValues = new JSONArray();
+            areaValues.put(new JSONObject().put("n", "全部").put("v", ""));
+            String[] areas = {"中国大陆", "中国香港", "中国台湾", "美国", "日本", "韩国", "印度", "泰国", "英国", "法国", "其他"};
+            for (String a : areas) areaValues.put(new JSONObject().put("n", a).put("v", a));
+            areaFilter.put("value", areaValues);
+            filters.put(areaFilter);
 
-        // 地区筛选
-        JSONObject areaFilter = new JSONObject();
-        areaFilter.put("key", "area");
-        areaFilter.put("name", "地区");
-        JSONArray areaValues = new JSONArray();
-        areaValues.put(new JSONObject().put("n", "全部").put("v", ""));
-        String[] areas = {"中国大陆", "中国香港", "中国台湾", "美国", "日本", "韩国", "印度", "泰国", "英国", "法国", "其他"};
-        for (String a : areas) areaValues.put(new JSONObject().put("n", a).put("v", a));
-        areaFilter.put("value", areaValues);
-        filters.put(areaFilter);
+            // 年份筛选
+            JSONObject yearFilter = new JSONObject();
+            yearFilter.put("key", "year");
+            yearFilter.put("name", "年份");
+            JSONArray yearValues = new JSONArray();
+            yearValues.put(new JSONObject().put("n", "全部").put("v", ""));
+            String[] years = {"2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009~2000"};
+            for (String y : years) yearValues.put(new JSONObject().put("n", y).put("v", y));
+            yearFilter.put("value", yearValues);
+            filters.put(yearFilter);
 
-        // 年份筛选
-        JSONObject yearFilter = new JSONObject();
-        yearFilter.put("key", "year");
-        yearFilter.put("name", "年份");
-        JSONArray yearValues = new JSONArray();
-        yearValues.put(new JSONObject().put("n", "全部").put("v", ""));
-        String[] years = {"2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009~2000"};
-        for (String y : years) yearValues.put(new JSONObject().put("n", y).put("v", y));
-        yearFilter.put("value", yearValues);
-        filters.put(yearFilter);
-
-        // 语言筛选
-        JSONObject langFilter = new JSONObject();
-        langFilter.put("key", "lang");
-        langFilter.put("name", "语言");
-        JSONArray langValues = new JSONArray();
-        langValues.put(new JSONObject().put("n", "全部").put("v", ""));
-        String[] langs = {"国语", "英语", "粤语", "韩语", "日语", "其他"};
-        for (String l : langs) langValues.put(new JSONObject().put("n", l).put("v", l));
-        langFilter.put("value", langValues);
-        filters.put(langFilter);
-
+            // 语言筛选
+            JSONObject langFilter = new JSONObject();
+            langFilter.put("key", "lang");
+            langFilter.put("name", "语言");
+            JSONArray langValues = new JSONArray();
+            langValues.put(new JSONObject().put("n", "全部").put("v", ""));
+            String[] langs = {"国语", "英语", "粤语", "韩语", "日语", "其他"};
+            for (String l : langs) langValues.put(new JSONObject().put("n", l).put("v", l));
+            langFilter.put("value", langValues);
+            filters.put(langFilter);
+        } catch (Exception e) {
+            SpiderDebug.log(e);
+        }
         return filters;
     }
 
