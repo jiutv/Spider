@@ -72,7 +72,7 @@ public class Jpys extends Spider {
 
     // ==================== 分类内容 ====================
     @Override
-    public String categoryContent(String tid, String pg, boolean filter, Map<String, String> extend) {
+    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             // 构建URL，支持筛选
             StringBuilder urlBuilder = new StringBuilder(SITE_URL);
@@ -837,4 +837,3 @@ public class Jpys extends Spider {
         return false;
     }
 }
-
