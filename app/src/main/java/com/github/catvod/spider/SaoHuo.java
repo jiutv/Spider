@@ -94,7 +94,7 @@ public class SaoHuo extends Spider {
             }
 
             // 抓取首页推荐
-            String html = fetch(SITE_URL);
+            String html = fetchWithRetry(SITE_URL, 3);
             JSONArray list = parseVideoList(html);
             result.put("list", list);
             return result.toString();
@@ -153,7 +153,7 @@ public class SaoHuo extends Spider {
 
             // URL: /list/{id}-{page}.html
             String url = SITE_URL + "/list/" + actualTid + "-" + page + ".html";
-            String html = fetch(url);
+            String html = fetchWithRetry(url, 3);
             JSONArray list = parseVideoList(html);
 
             // 解析分页
@@ -176,10 +176,23 @@ public class SaoHuo extends Spider {
     @Override
     public String searchContent(String key, boolean quick) {
         try {
-            // 搜索URL: /search.php?searchword=xxx
-            String url = SITE_URL + "/search.php?searchword=" + URLEncoder.encode(key, "UTF-8");
-            String html = fetch(url);
-            JSONArray list = parseVideoList(html);
+            // 搜索URL优先使用首页表单的 /s----------.html?wd=xxx
+            // 备用: /search.php?searchword=xxx
+            JSONArray list = new JSONArray();
+            String url1 = SITE_URL + "/s----------.html?wd=" + URLEncoder.encode(key, "UTF-8");
+            String html = fetchWithRetry(url1, 3);
+            if (!html.isEmpty()) {
+                list = parseVideoList(html);
+            }
+
+            // 如果第一种方式无结果，尝试备用搜索
+            if (list.length() == 0) {
+                String url2 = SITE_URL + "/search.php?searchword=" + URLEncoder.encode(key, "UTF-8");
+                html = fetchWithRetry(url2, 3);
+                if (!html.isEmpty()) {
+                    list = parseVideoList(html);
+                }
+            }
 
             JSONObject result = new JSONObject();
             result.put("list", list);
@@ -194,20 +207,12 @@ public class SaoHuo extends Spider {
     public String searchContent(String key, boolean quick, String pg) {
         try {
             int page = pg.isEmpty() ? 1 : Integer.parseInt(pg);
-            // 搜索URL: /search.php?searchword=xxx
-            // 该站搜索结果暂无分页，只返回第一页
             if (page > 1) {
                 JSONObject result = new JSONObject();
                 result.put("list", new JSONArray());
                 return result.toString();
             }
-            String url = SITE_URL + "/search.php?searchword=" + URLEncoder.encode(key, "UTF-8");
-            String html = fetch(url);
-            JSONArray list = parseVideoList(html);
-
-            JSONObject result = new JSONObject();
-            result.put("list", list);
-            return result.toString();
+            return searchContent(key, quick);
         } catch (Exception e) {
             SpiderDebug.log(e);
             return "";
@@ -220,7 +225,7 @@ public class SaoHuo extends Spider {
         try {
             String id = ids.get(0);
             String url = id.startsWith("http") ? id : SITE_URL + id;
-            String html = fetch(url);
+            String html = fetchWithRetry(url, 3);
 
             Document doc = Jsoup.parse(html);
             doc.setBaseUri(SITE_URL);
@@ -335,84 +340,115 @@ public class SaoHuo extends Spider {
         try {
             JSONObject result = new JSONObject();
             String url = id.startsWith("http") ? id : SITE_URL + id;
-            String html = fetch(url);
+            String html = fetchWithRetry(url, 3);
 
             String playUrl = null;
 
-            // 方法1: 提取 player_aaaa 变量中的 url
-            Pattern playerVar = Pattern.compile("player_aaaa\\s*=\\s*(\\{[^}]+\\})");
+            // 方法1: 提取 player_aaaa 变量中的 url (骚火模板常用)
+            // 格式: player_aaaa = {url:"xxx", next:"xxx", ...}
+            Pattern playerVar = Pattern.compile("player_aaaa\\s*=\\s*(\\{.*?\\})");
             Matcher playerMatch = playerVar.matcher(html);
             if (playerMatch.find()) {
-                try {
-                    JSONObject playerData = new JSONObject(playerMatch.group(1));
-                    playUrl = playerData.optString("url", "");
-                } catch (Exception e) {
-                    // JSON解析失败，尝试正则提取url字段
-                    String urlStr = extractBetween(playerMatch.group(1), "\"url\":\"", "\"");
-                    if (!urlStr.isEmpty()) playUrl = urlStr.replace("\\/", "/");
+                String playerJson = playerMatch.group(1);
+                // 尝试提取 url 字段
+                Pattern urlP = Pattern.compile("['\"]?url['\"]?\\s*:\\s*['\"]([^'\"]+)['\"]");
+                Matcher urlM = urlP.matcher(playerJson);
+                if (urlM.find()) {
+                    playUrl = urlM.group(1).replace("\\/", "/");
                 }
             }
 
-            // 方法2: 查找 m3u8 直链
+            // 方法1b: 提取 player_data 变量
             if (playUrl == null || playUrl.isEmpty()) {
-                Pattern m3u8P = Pattern.compile("(https?://[^\"'\\s<>]+\\.m3u8[^\"'\\s<>]*)");
-                Matcher m3u8M = m3u8P.matcher(html);
-                if (m3u8M.find()) {
-                    playUrl = m3u8M.group(1);
+                Pattern playerDataP = Pattern.compile("player_(?:data|info|config)\\s*=\\s*(\\{.*?\\})");
+                Matcher playerDataM = playerDataP.matcher(html);
+                if (playerDataM.find()) {
+                    String pdJson = playerDataM.group(1);
+                    Pattern urlP = Pattern.compile("['\"]?url['\"]?\\s*:\\s*['\"]([^'\"]+)['\"]");
+                    Matcher urlM = urlP.matcher(pdJson);
+                    if (urlM.find()) {
+                        playUrl = urlM.group(1).replace("\\/", "/");
+                    }
                 }
             }
 
-            // 方法3: 查找 mp4 直链
-            if (playUrl == null || playUrl.isEmpty()) {
-                Pattern mp4P = Pattern.compile("(https?://[^\"'\\s<>]+\\.mp4[^\"'\\s<>]*)");
-                Matcher mp4M = mp4P.matcher(html);
-                if (mp4M.find()) {
-                    playUrl = mp4M.group(1);
-                }
-            }
-
-            // 方法4: 从 iframe src 提取播放器URL
+            // 方法2: 从 iframe src 提取 (骚火模板可能用iframe播放器)
             if (playUrl == null || playUrl.isEmpty()) {
                 Document doc = Jsoup.parse(html);
                 Elements iframes = doc.select("iframe[src]");
                 for (Element iframe : iframes) {
                     String src = iframe.attr("src");
-                    if (src.contains("player") || src.contains("play") || src.contains("m3u8") || src.contains("video")) {
-                        // 如果iframe src本身就是视频直链
-                        if (src.contains(".m3u8") || src.contains(".mp4")) {
-                            playUrl = src;
-                            break;
-                        }
-                        // 尝试从iframe src中提取url参数
+                    // 修复相对URL
+                    if (src.startsWith("/")) src = SITE_URL + src;
+                    
+                    // 如果iframe src本身就是视频直链
+                    if (src.contains(".m3u8") || src.contains(".mp4") || src.contains(".flv")) {
+                        playUrl = src;
+                        break;
+                    }
+                    
+                    // 尝试从iframe src中提取url参数
+                    if (src.contains("url=") || src.contains("vid=") || src.contains("v=")) {
+                        String encoded = "";
                         if (src.contains("url=")) {
-                            String encoded = extractBetween(src, "url=", "&");
+                            encoded = extractBetween(src, "url=", "&");
                             if (encoded.isEmpty()) encoded = src.substring(src.indexOf("url=") + 4);
+                        } else if (src.contains("vid=")) {
+                            encoded = extractBetween(src, "vid=", "&");
+                            if (encoded.isEmpty()) encoded = src.substring(src.indexOf("vid=") + 4);
+                        } else if (src.contains("v=")) {
+                            encoded = extractBetween(src, "v=", "&");
+                            if (encoded.isEmpty()) encoded = src.substring(src.indexOf("v=") + 2);
+                        }
+                        if (!encoded.isEmpty()) {
                             try {
                                 playUrl = java.net.URLDecoder.decode(encoded, "UTF-8");
                             } catch (Exception e) {
                                 playUrl = encoded;
                             }
+                            // 验证解出的URL是否是视频直链
+                            if (playUrl != null && !playUrl.contains(".m3u8") && !playUrl.contains(".mp4") && !playUrl.contains(".flv")) {
+                                // 不是直链，尝试请求iframe页面获取真实地址
+                                String iframeHtml = fetchWithRetry(src, 2);
+                                if (!iframeHtml.isEmpty()) {
+                                    String extracted = extractDirectVideoUrl(iframeHtml);
+                                    if (extracted != null) {
+                                        playUrl = extracted;
+                                    }
+                                }
+                            }
                             break;
+                        }
+                    }
+                    
+                    // 如果iframe指向站内播放器页面，请求它
+                    if (src.contains("player") || src.contains("play") || src.contains("video")) {
+                        String iframeHtml = fetchWithRetry(src, 2);
+                        if (!iframeHtml.isEmpty()) {
+                            String extracted = extractDirectVideoUrl(iframeHtml);
+                            if (extracted != null) {
+                                playUrl = extracted;
+                                break;
+                            }
                         }
                     }
                 }
             }
 
-            // 方法5: 从 JavaScript 变量提取
+            // 方法3: 直接从页面HTML查找m3u8/mp4直链
             if (playUrl == null || playUrl.isEmpty()) {
-                Pattern jsVarP = Pattern.compile("(?:var\\s+\\w+|const\\s+\\w+|let\\s+\\w+)\\s*=\\s*[\"'](https?://[^\"']+\\.(?:m3u8|mp4|flv)[^\"']*)[\"']");
-                Matcher jsVarM = jsVarP.matcher(html);
-                if (jsVarM.find()) {
-                    playUrl = jsVarM.group(1);
-                }
+                playUrl = extractDirectVideoUrl(html);
             }
 
-            // 方法6: 从 data-url 或 data-src 属性提取
+            // 方法4: 从 script 标签内容中查找
             if (playUrl == null || playUrl.isEmpty()) {
-                Pattern dataUrlP = Pattern.compile("data-(?:url|src|video)\\s*=\\s*[\"'](https?://[^\"']+)[\"']");
-                Matcher dataUrlM = dataUrlP.matcher(html);
-                if (dataUrlM.find()) {
-                    playUrl = dataUrlM.group(1);
+                Document doc = Jsoup.parse(html);
+                for (Element script : doc.select("script")) {
+                    String js = script.data();
+                    if (js.contains(".m3u8") || js.contains(".mp4") || js.contains(".flv")) {
+                        playUrl = extractDirectVideoUrl(js);
+                        if (playUrl != null) break;
+                    }
                 }
             }
 
@@ -425,7 +461,7 @@ public class SaoHuo extends Spider {
                 headers.put("Referer", SITE_URL);
                 result.put("header", headers.toString());
             } else {
-                // 无法提取直链，使用网页解析
+                // 无法提取直链，使用网页嗅探模式
                 result.put("parse", 1);
                 result.put("playUrl", "");
                 result.put("url", url);
@@ -439,6 +475,26 @@ public class SaoHuo extends Spider {
             SpiderDebug.log(e);
             return "";
         }
+    }
+
+    /**
+     * 从文本中提取视频直链(m3u8/mp4/flv)
+     */
+    private String extractDirectVideoUrl(String text) {
+        if (text == null || text.isEmpty()) return null;
+        // m3u8
+        Pattern m3u8P = Pattern.compile("(https?://[^\"'\\s<>\\\\]+\\.m3u8[^\"'\\s<>\\\\]*)");
+        Matcher m3u8M = m3u8P.matcher(text);
+        if (m3u8M.find()) return m3u8M.group(1).replace("\\/", "/");
+        // mp4
+        Pattern mp4P = Pattern.compile("(https?://[^\"'\\s<>\\\\]+\\.mp4[^\"'\\s<>\\\\]*)");
+        Matcher mp4M = mp4P.matcher(text);
+        if (mp4M.find()) return mp4M.group(1).replace("\\/", "/");
+        // flv
+        Pattern flvP = Pattern.compile("(https?://[^\"'\\s<>\\\\]+\\.flv[^\"'\\s<>\\\\]*)");
+        Matcher flvM = flvP.matcher(text);
+        if (flvM.find()) return flvM.group(1).replace("\\/", "/");
+        return null;
     }
 
     // ==================== 工具方法 ====================
@@ -601,6 +657,20 @@ public class SaoHuo extends Spider {
             SpiderDebug.log(e);
             return "";
         }
+    }
+
+    /**
+     * 带重试的HTTP请求 (针对Cloudflare 522超时)
+     */
+    private String fetchWithRetry(String url, int maxRetries) {
+        for (int i = 0; i < maxRetries; i++) {
+            String html = fetch(url);
+            if (!html.isEmpty() && !html.contains("Connection timed out") && !html.contains("error code: 522")) {
+                return html;
+            }
+            try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+        }
+        return "";
     }
 
     /**
