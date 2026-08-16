@@ -17,16 +17,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Y2sSpider - TVBox爬虫 (针对 y2s52n7.com)
+ * Jpys - TVBox爬虫 (针对 y2s52n7.com)
  * 站点: Next.js SSR架构影视站
  * 生成时间: 2026-08-16
  *
  * 使用方法:
  * 1. 将此文件放入 CatVodTVSpider 项目的 com.github.catvod.spider 包下
  * 2. 编译生成 custom_spider.jar
- * 3. TVBox配置中 api 填 csp_jpys
+ * 3. TVBox配置中 api 填 csp_Jpys
  */
-public class jpys extends Spider {
+public class Jpys extends Spider {
 
     private static final String SITE_URL = "https://y2s52n7.com";
     private static final String SEARCH_URL = SITE_URL + "/vod/search/{wd}";
@@ -409,12 +409,6 @@ public class jpys extends Spider {
             SpiderDebug.log(e);
         }
         return null;
-    }
-
-    // ==================== 搜索详情（快速搜索） ====================
-    @Override
-    public String searchContent(String key, boolean quick, String pg) {
-        return searchContent(key, quick);
     }
 
     // ==================== 工具方法 ====================
