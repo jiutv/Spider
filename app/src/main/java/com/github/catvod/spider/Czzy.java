@@ -18,6 +18,8 @@ import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Czzy extends Spider {
 
@@ -105,7 +107,6 @@ public class Czzy extends Spider {
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String id = ids.get(0);
-        // 关键修正：处理绝对路径和相对路径
         String url;
         if (id.startsWith("http")) {
             url = id;
@@ -133,7 +134,6 @@ public class Czzy extends Spider {
         }
         vod.put("vod_content", info.toString().trim());
 
-        // 播放列表
         Elements playBtns = doc.select("div.paly_list_btn > a");
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".paly_list_btn a");
@@ -173,19 +173,38 @@ public class Czzy extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        Document doc = Jsoup.parse(OkHttp.string(id, getHeaders()));
+        // id 是播放页地址，如 https://www.4kcz.com/v_play/xxx.html
+        // 先请求播放页，获取 iframe
+        String playHtml = OkHttp.string(id, getHeaders());
+        Document doc = Jsoup.parse(playHtml);
         Element iframe = doc.selectFirst("iframe");
+
         if (iframe != null) {
-            String src = iframe.attr("src");
-            if (!src.isEmpty()) {
-                JSONObject result = new JSONObject();
-                result.put("parse", 0);
-                result.put("playUrl", "");
-                result.put("url", src);
-                result.put("header", "");
-                return result.toString();
+            String iframeSrc = iframe.attr("src");
+            if (!iframeSrc.isEmpty()) {
+                // 请求 iframe 页面，提取真正的 m3u8
+                HashMap<String, String> iframeHeaders = new HashMap<>();
+                iframeHeaders.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                iframeHeaders.put("Referer", id);
+
+                String iframeHtml = OkHttp.string(iframeSrc, iframeHeaders);
+
+                // 从 iframe 页面提取 m3u8 链接
+                Pattern pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8)");
+                Matcher matcher = pattern.matcher(iframeHtml);
+                if (matcher.find()) {
+                    String m3u8Url = matcher.group(1);
+                    JSONObject result = new JSONObject();
+                    result.put("parse", 0);
+                    result.put("playUrl", "");
+                    result.put("url", m3u8Url);
+                    result.put("header", "");
+                    return result.toString();
+                }
             }
         }
+
+        //  fallback：返回原始地址让 TVBox 尝试解析
         JSONObject result = new JSONObject();
         result.put("parse", 1);
         result.put("playUrl", "");
@@ -205,7 +224,6 @@ public class Czzy extends Spider {
                 Element a = li.selectFirst("a[href*=/movie/]");
                 if (a == null) continue;
                 String href = a.attr("href");
-                // 保存相对路径，避免 detailContent 中 URL 重复
                 if (href.startsWith(siteUrl)) {
                     href = href.substring(siteUrl.length());
                 }
