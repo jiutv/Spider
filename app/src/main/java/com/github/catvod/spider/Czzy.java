@@ -81,12 +81,11 @@ public class Czzy extends Spider {
 
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        // 【修复1】统一处理 tid 斜杠，确保分页路径正确
+        // 统一处理 tid 斜杠，确保分页路径正确
         String cateId = tid;
         if (!cateId.startsWith("/")) {
             cateId = "/" + cateId;
         }
-        // 去掉尾部斜杠，避免拼接出 /dy//page/2
         if (cateId.endsWith("/")) {
             cateId = cateId.substring(0, cateId.length() - 1);
         }
@@ -102,13 +101,11 @@ public class Czzy extends Spider {
 
         int page = Integer.parseInt(pg);
         int pageCount = page;
-        // 【修复1-增强】更健壮的分页判断：同时检测“下一页”文本和页码链接
         Elements nextPage = doc.select("a:contains(下一页)");
         if (nextPage.isEmpty()) {
             nextPage = doc.select("a.next");
         }
         if (nextPage.isEmpty()) {
-            // 有些主题用 page-numbers 中的 current 后一个判断
             Element current = doc.selectFirst(".page-numbers.current");
             if (current != null) {
                 Element next = current.nextElementSibling();
@@ -163,7 +160,6 @@ public class Czzy extends Spider {
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".paly_list_btn a");
         }
-        // 【增强】兼容更多播放按钮结构
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".play_list a, .playlist a, .stui-content__playlist a");
         }
@@ -174,7 +170,6 @@ public class Czzy extends Spider {
             String text = a.text().trim();
             String href = a.attr("href");
             if (href.isEmpty()) continue;
-            // 统一补全为绝对路径，方便后续 playerContent 处理
             if (href.startsWith("/")) {
                 href = siteUrl + href;
             } else if (!href.startsWith("http")) {
@@ -209,7 +204,6 @@ public class Czzy extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        // id 是播放页地址，如 https://www.4kcz.com/v_play/xxx.html
         String playHtml = OkHttp.string(id, getHeaders());
         Document doc = Jsoup.parse(playHtml);
         Element iframe = doc.selectFirst("iframe");
@@ -217,7 +211,6 @@ public class Czzy extends Spider {
         if (iframe != null) {
             String iframeSrc = iframe.attr("src");
             if (!iframeSrc.isEmpty()) {
-                // 【修复2】处理相对路径
                 if (iframeSrc.startsWith("/")) {
                     iframeSrc = siteUrl + iframeSrc;
                 } else if (!iframeSrc.startsWith("http")) {
@@ -231,7 +224,6 @@ public class Czzy extends Spider {
                 String iframeHtml = OkHttp.string(iframeSrc, iframeHeaders);
                 String m3u8Url = null;
 
-                // 【修复2-增强】多策略提取 m3u8，按优先级依次尝试
                 // 策略A：直接匹配裸露的 m3u8 URL
                 Pattern pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8[^\\s\"'<>]*)");
                 Matcher matcher = pattern.matcher(iframeHtml);
@@ -239,7 +231,7 @@ public class Czzy extends Spider {
                     m3u8Url = matcher.group(1);
                 }
 
-                // 策略B：从 JS 变量中提取（如 var url="xxx.m3u8"; var src='xxx.m3u8' ）
+                // 策略B：从 JS 变量中提取
                 if (m3u8Url == null) {
                     Pattern jsPattern = Pattern.compile("(var|let|const)\\s+(url|src|playUrl|videoUrl)\\s*=\\s*[\"'](https?://[^\"']+\\.m3u8[^\"']*)[\"']");
                     Matcher jsMatcher = jsPattern.matcher(iframeHtml);
@@ -260,18 +252,21 @@ public class Czzy extends Spider {
                             m3u8Url = source.attr("src");
                         }
                     }
+                    if (m3u8Url != null && !m3u8Url.isEmpty() && !m3u8Url.startsWith("http")) {
+                        m3u8Url = iframeSrc.substring(0, iframeSrc.indexOf("/", 8)) + (m3u8Url.startsWith("/") ? m3u8Url : "/" + m3u8Url);
+                    }
                 }
 
-                // 策略D：从 JSON 字符串或 API 返回体中提取
+                // 策略D：从 JSON 字符串中提取
                 if (m3u8Url == null) {
                     Pattern jsonPattern = Pattern.compile("\"url\"\\s*:\\s*\"(https?://[^\"]+\\.m3u8[^\"]*)\"");
                     Matcher jsonMatcher = jsonPattern.matcher(iframeHtml);
                     if (jsonMatcher.find()) {
-                        m3u8Url = jsonMatcher.find() ? jsonMatcher.group(1) : null;
+                        m3u8Url = jsonMatcher.group(1);
                     }
                 }
 
-                // 策略E：匹配 .mp4 作为兜底（部分源直接给 mp4）
+                // 策略E：匹配 .mp4 作为兜底
                 if (m3u8Url == null) {
                     Pattern mp4Pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.mp4[^\\s\"'<>]*)");
                     Matcher mp4Matcher = mp4Pattern.matcher(iframeHtml);
@@ -285,7 +280,6 @@ public class Czzy extends Spider {
                     result.put("parse", 0);
                     result.put("playUrl", "");
                     result.put("url", m3u8Url);
-                    // 【增强】若拿到 m3u8，把 Referer 带上，防部分 CDN 防盗链
                     JSONObject headerJson = new JSONObject();
                     headerJson.put("Referer", iframeSrc);
                     headerJson.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -295,7 +289,7 @@ public class Czzy extends Spider {
             }
         }
 
-        // 【增强】若页面无 iframe，尝试直接从当前播放页提取 video/src 或 script 中的 m3u8
+        // 若页面无 iframe，尝试直接从当前播放页提取
         String directM3u8 = extractDirectM3u8(doc);
         if (directM3u8 != null) {
             JSONObject result = new JSONObject();
@@ -309,7 +303,7 @@ public class Czzy extends Spider {
             return result.toString();
         }
 
-        // fallback：返回原始地址让 TVBox 尝试解析
+        // fallback
         JSONObject result = new JSONObject();
         result.put("parse", 1);
         result.put("playUrl", "");
@@ -318,22 +312,27 @@ public class Czzy extends Spider {
         return result.toString();
     }
 
-    /**
-     * 【新增】从当前页面直接提取 m3u8（无 iframe 场景）
-     */
     private String extractDirectM3u8(Document doc) {
-        // 尝试 video / source 标签
         Element video = doc.selectFirst("video[src]");
         if (video != null) {
             String src = video.attr("src");
-            if (src.contains(".m3u8") || src.contains(".mp4")) return src;
+            if (src.contains(".m3u8") || src.contains(".mp4")) {
+                if (!src.startsWith("http")) {
+                    return siteUrl + (src.startsWith("/") ? src : "/" + src);
+                }
+                return src;
+            }
         }
         Element source = doc.selectFirst("source[src]");
         if (source != null) {
             String src = source.attr("src");
-            if (src.contains(".m3u8") || src.contains(".mp4")) return src;
+            if (src.contains(".m3u8") || src.contains(".mp4")) {
+                if (!src.startsWith("http")) {
+                    return siteUrl + (src.startsWith("/") ? src : "/" + src);
+                }
+                return src;
+            }
         }
-        // 尝试从 script 中提取
         Elements scripts = doc.select("script");
         for (Element script : scripts) {
             String html = script.html();
