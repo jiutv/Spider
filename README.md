@@ -27,17 +27,6 @@ jsSpider 参考 https://github.com/jadehh/TVSpider
 ---
 
 
-## 公众号
-关注公众号，获取最新更新。
-
-![pAW8wwV.jpg](wechat.png)
-
-## 备注
-该项目仅为自己自用开发，如果发现bug，可以提issues，但是基本不接受新需求（除非我感兴趣的新需求）。
-
-## 群组
-为了方便讨论可以加群组，但不保证及时回复 https://t.me/+YLvmJsZoFmcyN2M1
-
 
 {
   "spider": "https://androidcatvodspider.netlify.app/jar/custom_spider.jar;md5;4a9814b359e0f39cf4613cd801871c06",
