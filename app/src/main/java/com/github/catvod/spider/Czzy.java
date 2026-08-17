@@ -120,19 +120,15 @@ public class Czzy extends Spider {
         Element h1 = doc.selectFirst("h1");
         vod.put("vod_name", h1 != null ? h1.text().trim() : "");
 
-        Element poster = doc.selectFirst("div.poster img");
-        if (poster == null) {
-            String name = vod.optString("vod_name", "");
-            if (!name.isEmpty()) {
-                poster = doc.selectFirst("img[alt=" + name + "]");
-            }
-        }
+        // 封面图选择器修正：用 div.dyimg img
+        Element poster = doc.selectFirst("div.dyimg img");
         if (poster != null) {
             String src = poster.attr("src");
             if (src.contains("blank.gif")) src = poster.attr("data-original");
             vod.put("vod_pic", src);
         }
 
+        // 信息
         Elements infoLis = doc.select("div.moviedteail_list li, .moviedteail_list li");
         StringBuilder info = new StringBuilder();
         for (Element li : infoLis) {
@@ -140,7 +136,7 @@ public class Czzy extends Spider {
         }
         vod.put("vod_content", info.toString().trim());
 
-        // 播放列表 - 关键修复：vod_play_from 和 vod_play_url 必须是字符串
+        // 播放列表 - 修正格式，单源不加$$$
         Elements playBtns = doc.select("div.paly_list_btn > a");
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".paly_list_btn a");
