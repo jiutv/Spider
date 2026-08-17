@@ -16,7 +16,9 @@ import org.jsoup.select.Elements;
 import java.net.URLEncoder;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -62,69 +64,79 @@ public class TvDy extends Spider {
             }
         }
         if (filter) {
-            HashMap<String, String> extend = new HashMap<>();
-            extend.put("class", "");
-            extend.put("area", "");
-            extend.put("year", "");
-            extend.put("lang", "");
-            extend.put("by", "");
-            return Result.string(classes, list, getFilter());
+            return Result.string(classes, list, getFilters());
         }
         return Result.string(classes, list);
     }
 
-    private HashMap<String, String> getFilter() {
-        HashMap<String, String> filter = new HashMap<>();
-        StringBuilder sb = new StringBuilder();
-        sb.append("[");
+    private LinkedHashMap<String, List<Filter>> getFilters() {
+        LinkedHashMap<String, List<Filter>> filters = new LinkedHashMap<>();
+        List<Filter> items = new ArrayList<>();
+
         // 剧情
-        sb.append("{\"key\":\"class\",\"name\":\"剧情\",\"value\":[");
-        sb.append("{\"n\":\"全部\",\"v\":\"\"},");
-        sb.append("{\"n\":\"动作\",\"v\":\"动作\"},{\"n\":\"爱情\",\"v\":\"爱情\"},{\"n\":\"喜剧\",\"v\":\"喜剧\"},");
-        sb.append("{\"n\":\"科幻\",\"v\":\"科幻\"},{\"n\":\"悬疑\",\"v\":\"悬疑\"},{\"n\":\"惊悚\",\"v\":\"惊悚\"},");
-        sb.append("{\"n\":\"恐怖\",\"v\":\"恐怖\"},{\"n\":\"犯罪\",\"v\":\"犯罪\"},{\"n\":\"剧情\",\"v\":\"剧情\"},");
-        sb.append("{\"n\":\"战争\",\"v\":\"战争\"},{\"n\":\"西部\",\"v\":\"西部\"},{\"n\":\"奇幻\",\"v\":\"奇幻\"},");
-        sb.append("{\"n\":\"冒险\",\"v\":\"冒险\"},{\"n\":\"灾难\",\"v\":\"灾难\"},{\"n\":\"武侠\",\"v\":\"武侠\"},");
-        sb.append("{\"n\":\"同性\",\"v\":\"同性\"},{\"n\":\"音乐\",\"v\":\"音乐\"},{\"n\":\"歌舞\",\"v\":\"歌舞\"},");
-        sb.append("{\"n\":\"传记\",\"v\":\"传记\"},{\"n\":\"历史\",\"v\":\"历史\"}");
-        sb.append("]},");
+        items.add(new Filter("class", "剧情", Arrays.asList(
+            new Filter.Value("全部", ""),
+            new Filter.Value("动作", "动作"), new Filter.Value("爱情", "爱情"),
+            new Filter.Value("喜剧", "喜剧"), new Filter.Value("科幻", "科幻"),
+            new Filter.Value("悬疑", "悬疑"), new Filter.Value("惊悚", "惊悚"),
+            new Filter.Value("恐怖", "恐怖"), new Filter.Value("犯罪", "犯罪"),
+            new Filter.Value("剧情", "剧情"), new Filter.Value("战争", "战争"),
+            new Filter.Value("西部", "西部"), new Filter.Value("奇幻", "奇幻"),
+            new Filter.Value("冒险", "冒险"), new Filter.Value("灾难", "灾难"),
+            new Filter.Value("武侠", "武侠"), new Filter.Value("同性", "同性"),
+            new Filter.Value("音乐", "音乐"), new Filter.Value("歌舞", "歌舞"),
+            new Filter.Value("传记", "传记"), new Filter.Value("历史", "历史")
+        )));
+
         // 地区
-        sb.append("{\"key\":\"area\",\"name\":\"地区\",\"value\":[");
-        sb.append("{\"n\":\"全部\",\"v\":\"\"},");
-        sb.append("{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},");
-        sb.append("{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"法国\",\"v\":\"法国\"},{\"n\":\"英国\",\"v\":\"英国\"},");
-        sb.append("{\"n\":\"日本\",\"v\":\"日本\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"泰国\",\"v\":\"泰国\"},");
-        sb.append("{\"n\":\"德国\",\"v\":\"德国\"},{\"n\":\"丹麦\",\"v\":\"丹麦\"},{\"n\":\"印度\",\"v\":\"印度\"},");
-        sb.append("{\"n\":\"意大利\",\"v\":\"意大利\"},{\"n\":\"西班牙\",\"v\":\"西班牙\"},{\"n\":\"菲律宾\",\"v\":\"菲律宾\"}");
-        sb.append("]},");
+        items.add(new Filter("area", "地区", Arrays.asList(
+            new Filter.Value("全部", ""),
+            new Filter.Value("大陆", "大陆"), new Filter.Value("香港", "香港"),
+            new Filter.Value("台湾", "台湾"), new Filter.Value("美国", "美国"),
+            new Filter.Value("法国", "法国"), new Filter.Value("英国", "英国"),
+            new Filter.Value("日本", "日本"), new Filter.Value("韩国", "韩国"),
+            new Filter.Value("泰国", "泰国"), new Filter.Value("德国", "德国"),
+            new Filter.Value("丹麦", "丹麦"), new Filter.Value("印度", "印度"),
+            new Filter.Value("意大利", "意大利"), new Filter.Value("西班牙", "西班牙"),
+            new Filter.Value("菲律宾", "菲律宾")
+        )));
+
         // 年份
-        sb.append("{\"key\":\"year\",\"name\":\"年份\",\"value\":[");
-        sb.append("{\"n\":\"全部\",\"v\":\"\"},");
-        sb.append("{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},");
-        sb.append("{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},");
-        sb.append("{\"n\":\"2020\",\"v\":\"2020\"},{\"n\":\"2019\",\"v\":\"2019\"},{\"n\":\"2018\",\"v\":\"2018\"},");
-        sb.append("{\"n\":\"2017\",\"v\":\"2017\"},{\"n\":\"2016\",\"v\":\"2016\"},{\"n\":\"2015\",\"v\":\"2015\"},");
-        sb.append("{\"n\":\"2014\",\"v\":\"2014\"},{\"n\":\"2013\",\"v\":\"2013\"}");
-        sb.append("]},");
+        items.add(new Filter("year", "年份", Arrays.asList(
+            new Filter.Value("全部", ""),
+            new Filter.Value("2026", "2026"), new Filter.Value("2025", "2025"),
+            new Filter.Value("2024", "2024"), new Filter.Value("2023", "2023"),
+            new Filter.Value("2022", "2022"), new Filter.Value("2021", "2021"),
+            new Filter.Value("2020", "2020"), new Filter.Value("2019", "2019"),
+            new Filter.Value("2018", "2018"), new Filter.Value("2017", "2017"),
+            new Filter.Value("2016", "2016"), new Filter.Value("2015", "2015"),
+            new Filter.Value("2014", "2014"), new Filter.Value("2013", "2013")
+        )));
+
         // 语言
-        sb.append("{\"key\":\"lang\",\"name\":\"语言\",\"value\":[");
-        sb.append("{\"n\":\"全部\",\"v\":\"\"},");
-        sb.append("{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"粤语\",\"v\":\"粤语\"},{\"n\":\"英语\",\"v\":\"英语\"},");
-        sb.append("{\"n\":\"韩语\",\"v\":\"韩语\"},{\"n\":\"日语\",\"v\":\"日语\"},{\"n\":\"法语\",\"v\":\"法语\"},");
-        sb.append("{\"n\":\"德语\",\"v\":\"德语\"},{\"n\":\"俄语\",\"v\":\"俄语\"},{\"n\":\"泰语\",\"v\":\"泰语\"},");
-        sb.append("{\"n\":\"闽南语\",\"v\":\"闽南语\"},{\"n\":\"意大利语\",\"v\":\"意大利语\"},{\"n\":\"西班牙语\",\"v\":\"西班牙语\"},");
-        sb.append("{\"n\":\"葡萄牙语\",\"v\":\"葡萄牙语\"},{\"n\":\"菲律宾语\",\"v\":\"菲律宾语\"}");
-        sb.append("]},");
+        items.add(new Filter("lang", "语言", Arrays.asList(
+            new Filter.Value("全部", ""),
+            new Filter.Value("国语", "国语"), new Filter.Value("粤语", "粤语"),
+            new Filter.Value("英语", "英语"), new Filter.Value("韩语", "韩语"),
+            new Filter.Value("日语", "日语"), new Filter.Value("法语", "法语"),
+            new Filter.Value("德语", "德语"), new Filter.Value("俄语", "俄语"),
+            new Filter.Value("泰语", "泰语"), new Filter.Value("闽南语", "闽南语"),
+            new Filter.Value("意大利语", "意大利语"), new Filter.Value("西班牙语", "西班牙语"),
+            new Filter.Value("葡萄牙语", "葡萄牙语"), new Filter.Value("菲律宾语", "菲律宾语")
+        )));
+
         // 排序
-        sb.append("{\"key\":\"by\",\"name\":\"排序\",\"value\":[");
-        sb.append("{\"n\":\"最新\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"推荐\",\"v\":\"level\"},{\"n\":\"评分\",\"v\":\"score\"}");
-        sb.append("]}");
-        sb.append("]");
-        String filterJson = sb.toString();
+        items.add(new Filter("by", "排序", Arrays.asList(
+            new Filter.Value("最新", "time"),
+            new Filter.Value("人气", "hits"),
+            new Filter.Value("推荐", "level"),
+            new Filter.Value("评分", "score")
+        )));
+
         for (String tid : new String[]{"dianying", "dianshiju", "zongyi", "dongman", "tiyu"}) {
-            filter.put(tid, filterJson);
+            filters.put(tid, items);
         }
-        return filter;
+        return filters;
     }
 
     private String buildCateUrl(String tid, String pg, HashMap<String, String> extend) {
@@ -133,7 +145,6 @@ public class TvDy extends Spider {
         String lang = extend.containsKey("lang") ? extend.get("lang") : "";
         String year = extend.containsKey("year") ? extend.get("year") : "";
         String order = extend.containsKey("by") ? extend.get("by") : "";
-        String page = pg;
 
         StringBuilder sb = new StringBuilder();
         sb.append(cateUrl).append(tid);
@@ -158,8 +169,8 @@ public class TvDy extends Spider {
         sb.append("----");
 
         // d8-d10: page or dashes
-        if (!"1".equals(page)) {
-            sb.append(page).append("---");
+        if (!"1".equals(pg)) {
+            sb.append(pg).append("---");
         } else {
             sb.append("---");
         }
