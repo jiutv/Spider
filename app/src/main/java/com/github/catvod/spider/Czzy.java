@@ -81,7 +81,6 @@ public class Czzy extends Spider {
 
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        // 统一处理 tid 斜杠，确保分页路径正确
         String cateId = tid;
         if (!cateId.startsWith("/")) {
             cateId = "/" + cateId;
@@ -211,68 +210,21 @@ public class Czzy extends Spider {
         if (iframe != null) {
             String iframeSrc = iframe.attr("src");
             if (!iframeSrc.isEmpty()) {
+                // 处理相对路径
                 if (iframeSrc.startsWith("/")) {
                     iframeSrc = siteUrl + iframeSrc;
                 } else if (!iframeSrc.startsWith("http")) {
                     iframeSrc = siteUrl + "/" + iframeSrc;
                 }
 
-                HashMap<String, String> iframeHeaders = new HashMap<>();
-                iframeHeaders.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                iframeHeaders.put("Referer", id);
+                // 【核心修复】优先从 iframe src 的 url= 参数中直接提取 m3u8
+                // 厂长资源的播放器 iframe src 格式：
+                // https://plaa.py1080p.com:8181/player/py.php?code=cs&if=1&url=https://xxx.m3u8
+                String m3u8Url = extractUrlFromIframeSrc(iframeSrc);
 
-                String iframeHtml = OkHttp.string(iframeSrc, iframeHeaders);
-                String m3u8Url = null;
-
-                // 策略A：直接匹配裸露的 m3u8 URL
-                Pattern pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8[^\\s\"'<>]*)");
-                Matcher matcher = pattern.matcher(iframeHtml);
-                if (matcher.find()) {
-                    m3u8Url = matcher.group(1);
-                }
-
-                // 策略B：从 JS 变量中提取
+                // 若 src 参数里没有，再 fallback 请求 iframe 页面解析
                 if (m3u8Url == null) {
-                    Pattern jsPattern = Pattern.compile("(var|let|const)\\s+(url|src|playUrl|videoUrl)\\s*=\\s*[\"'](https?://[^\"']+\\.m3u8[^\"']*)[\"']");
-                    Matcher jsMatcher = jsPattern.matcher(iframeHtml);
-                    if (jsMatcher.find()) {
-                        m3u8Url = jsMatcher.group(3);
-                    }
-                }
-
-                // 策略C：从 video / source 标签中提取
-                if (m3u8Url == null) {
-                    Document iframeDoc = Jsoup.parse(iframeHtml);
-                    Element video = iframeDoc.selectFirst("video[src]");
-                    if (video != null) {
-                        m3u8Url = video.attr("src");
-                    } else {
-                        Element source = iframeDoc.selectFirst("source[src]");
-                        if (source != null) {
-                            m3u8Url = source.attr("src");
-                        }
-                    }
-                    if (m3u8Url != null && !m3u8Url.isEmpty() && !m3u8Url.startsWith("http")) {
-                        m3u8Url = iframeSrc.substring(0, iframeSrc.indexOf("/", 8)) + (m3u8Url.startsWith("/") ? m3u8Url : "/" + m3u8Url);
-                    }
-                }
-
-                // 策略D：从 JSON 字符串中提取
-                if (m3u8Url == null) {
-                    Pattern jsonPattern = Pattern.compile("\"url\"\\s*:\\s*\"(https?://[^\"]+\\.m3u8[^\"]*)\"");
-                    Matcher jsonMatcher = jsonPattern.matcher(iframeHtml);
-                    if (jsonMatcher.find()) {
-                        m3u8Url = jsonMatcher.group(1);
-                    }
-                }
-
-                // 策略E：匹配 .mp4 作为兜底
-                if (m3u8Url == null) {
-                    Pattern mp4Pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.mp4[^\\s\"'<>]*)");
-                    Matcher mp4Matcher = mp4Pattern.matcher(iframeHtml);
-                    if (mp4Matcher.find()) {
-                        m3u8Url = mp4Matcher.group(1);
-                    }
+                    m3u8Url = extractFromIframePage(iframeSrc, id);
                 }
 
                 if (m3u8Url != null && !m3u8Url.isEmpty()) {
@@ -289,7 +241,7 @@ public class Czzy extends Spider {
             }
         }
 
-        // 若页面无 iframe，尝试直接从当前播放页提取
+        // 兜底：无 iframe 时尝试从当前页直接提取
         String directM3u8 = extractDirectM3u8(doc);
         if (directM3u8 != null) {
             JSONObject result = new JSONObject();
@@ -303,13 +255,99 @@ public class Czzy extends Spider {
             return result.toString();
         }
 
-        // fallback
+        // 最终 fallback：让播放器 WebView 嗅探
         JSONObject result = new JSONObject();
         result.put("parse", 1);
         result.put("playUrl", "");
         result.put("url", id);
-        result.put("header", "");
+        JSONObject headerJson = new JSONObject();
+        headerJson.put("Referer", siteUrl + "/");
+        headerJson.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        result.put("header", headerJson.toString());
         return result.toString();
+    }
+
+    /**
+     * 【新增】从 iframe src 的 url= 参数中直接提取视频地址
+     * 厂长资源的 iframe src 格式：.../player/py.php?...&url=https://xxx.m3u8
+     */
+    private String extractUrlFromIframeSrc(String iframeSrc) {
+        try {
+            // 匹配 url= 后面跟着的 http(s) 地址
+            Pattern pattern = Pattern.compile("[?&]url=(https?://[^&\\s\"'<>]+)");
+            Matcher matcher = pattern.matcher(iframeSrc);
+            if (matcher.find()) {
+                String url = matcher.group(1);
+                // URL 解码（处理中文路径）
+                return java.net.URLDecoder.decode(url, "UTF-8");
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return null;
+    }
+
+    /**
+     * 【新增】请求 iframe 页面并从中提取视频地址（fallback）
+     */
+    private String extractFromIframePage(String iframeSrc, String referer) {
+        try {
+            HashMap<String, String> iframeHeaders = new HashMap<>();
+            iframeHeaders.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            iframeHeaders.put("Referer", referer);
+            iframeHeaders.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+
+            String iframeHtml = OkHttp.string(iframeSrc, iframeHeaders);
+            String m3u8Url = null;
+
+            // 策略1：裸露的 m3u8/mp4
+            Pattern pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.(?:m3u8|mp4)[^\\s\"'<>]*)");
+            Matcher matcher = pattern.matcher(iframeHtml);
+            if (matcher.find()) {
+                m3u8Url = matcher.group(1);
+            }
+
+            // 策略2：JS 变量
+            if (m3u8Url == null) {
+                Pattern jsPattern = Pattern.compile(
+                    "(var|let|const)\\s+(url|src|playUrl|videoUrl|playerUrl)\\s*=\\s*[\"'](https?://[^\"']+\\.(?:m3u8|mp4)[^\"']*)[\"']");
+                Matcher jsMatcher = jsPattern.matcher(iframeHtml);
+                if (jsMatcher.find()) {
+                    m3u8Url = jsMatcher.group(3);
+                }
+            }
+
+            // 策略3：video / source 标签
+            if (m3u8Url == null) {
+                Document iframeDoc = Jsoup.parse(iframeHtml);
+                Element video = iframeDoc.selectFirst("video[src]");
+                if (video != null) {
+                    m3u8Url = video.attr("src");
+                } else {
+                    Element source = iframeDoc.selectFirst("source[src]");
+                    if (source != null) {
+                        m3u8Url = source.attr("src");
+                    }
+                }
+                if (m3u8Url != null && !m3u8Url.isEmpty() && !m3u8Url.startsWith("http")) {
+                    String base = iframeSrc.substring(0, iframeSrc.indexOf("/", 8));
+                    m3u8Url = base + (m3u8Url.startsWith("/") ? m3u8Url : "/" + m3u8Url);
+                }
+            }
+
+            // 策略4：JSON
+            if (m3u8Url == null) {
+                Pattern jsonPattern = Pattern.compile("\"url\"\\s*:\\s*\"(https?://[^\"]+\\.(?:m3u8|mp4)[^\"]*)\"");
+                Matcher jsonMatcher = jsonPattern.matcher(iframeHtml);
+                if (jsonMatcher.find()) {
+                    m3u8Url = jsonMatcher.group(1);
+                }
+            }
+
+            return m3u8Url;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String extractDirectM3u8(Document doc) {
