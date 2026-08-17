@@ -51,7 +51,7 @@ public class Czzy extends Spider {
     }
 
     @Override
-    public void init(Context context, String ext) {
+    public void init(Context context, String ext) throws Exception {
         super.init(context, ext);
         if (!TextUtils.isEmpty(ext)) {
             siteUrl = ext.trim();
@@ -127,7 +127,7 @@ public class Czzy extends Spider {
         return result.toString();
     }
 
-    private JSONArray buildFilters() {
+    private JSONArray buildFilters() throws JSONException {
         JSONArray filterArr = new JSONArray();
 
         JSONObject yearFilter = new JSONObject();
@@ -194,7 +194,7 @@ public class Czzy extends Spider {
         return filterArr;
     }
 
-    private JSONArray getDefaultClasses() {
+    private JSONArray getDefaultClasses() throws JSONException {
         JSONArray classes = new JSONArray();
         String[][] defaultTypes = {
             {"1", "电影"},
