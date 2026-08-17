@@ -309,7 +309,7 @@ public class SaoHuo extends Spider {
 
             // 备用2: 查找任何包含 hhplayer 的URL
             if (playerIframeUrl == null || playerIframeUrl.isEmpty()) {
-                Matcher iframeM2 = Pattern.compile("(https?://[^\"'\s>]*hhplayer[^\"'\s>]*)").matcher(html);
+                Matcher iframeM2 = Pattern.compile("(https?://[^\"'\\s>]*hhplayer[^\"'\\s>]*)").matcher(html);
                 if (iframeM2.find()) playerIframeUrl = iframeM2.group(1);
             }
 
@@ -339,7 +339,7 @@ public class SaoHuo extends Spider {
             String t = null, key = null, tsKey = null;
 
             // 提取 __HHJX_BOOTSTRAP__ = {...}
-            Matcher bootM = Pattern.compile("__HHJX_BOOTSTRAP__\s*=\s*(\{.*?\});", Pattern.DOTALL).matcher(playerHtml);
+            Matcher bootM = Pattern.compile("__HHJX_BOOTSTRAP__\\s*=\\s*(\\{.*?\\});", Pattern.DOTALL).matcher(playerHtml);
             if (bootM.find()) {
                 try {
                     JSONObject boot = new JSONObject(bootM.group(1));
