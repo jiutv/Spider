@@ -19,9 +19,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/**
- * 厂长资源 (4kcz.com) TVBox 爬虫
- */
 public class Czzy extends Spider {
 
     private String siteUrl = "https://www.4kcz.com";
@@ -108,7 +105,13 @@ public class Czzy extends Spider {
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String id = ids.get(0);
-        String url = siteUrl + id;
+        // 关键修正：处理绝对路径和相对路径
+        String url;
+        if (id.startsWith("http")) {
+            url = id;
+        } else {
+            url = siteUrl + id;
+        }
         Document doc = Jsoup.parse(OkHttp.string(url, getHeaders()));
 
         JSONObject vod = new JSONObject();
@@ -141,9 +144,6 @@ public class Czzy extends Spider {
             Element a = playBtns.get(i);
             String text = a.text().trim();
             String href = a.attr("href");
-            if (href.startsWith("/")) {
-                href = siteUrl + href;
-            }
             playUrl.append(text).append("$").append(href);
             if (i < playBtns.size() - 1) {
                 playUrl.append("#");
@@ -205,6 +205,10 @@ public class Czzy extends Spider {
                 Element a = li.selectFirst("a[href*=/movie/]");
                 if (a == null) continue;
                 String href = a.attr("href");
+                // 保存相对路径，避免 detailContent 中 URL 重复
+                if (href.startsWith(siteUrl)) {
+                    href = href.substring(siteUrl.length());
+                }
                 String name = "";
                 String pic = "";
                 String remark = "";
