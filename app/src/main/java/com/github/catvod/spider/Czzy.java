@@ -19,6 +19,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+/**
+ * 厂长资源 (4kcz.com) TVBox 爬虫
+ */
 public class Czzy extends Spider {
 
     private String siteUrl = "https://www.4kcz.com";
@@ -45,14 +48,12 @@ public class Czzy extends Spider {
 
     @Override
     public String homeContent(boolean filter) throws Exception {
-        String html = OkHttp.string(siteUrl, getHeaders());
-        Document doc = Jsoup.parse(html);
+        Document doc = Jsoup.parse(OkHttp.string(siteUrl, getHeaders()));
         JSONObject result = new JSONObject();
         JSONArray classes = new JSONArray();
         LinkedHashMap<String, String> classMap = new LinkedHashMap<>();
 
-        Elements navItems = doc.select("ul.navlist > li > a");
-        for (Element a : navItems) {
+        for (Element a : doc.select("ul.navlist > li > a")) {
             String href = a.attr("href");
             String text = a.text().trim();
             if (href.startsWith("/") && !href.equals("/") && !text.isEmpty()) {
@@ -85,15 +86,13 @@ public class Czzy extends Spider {
         if (!"1".equals(pg)) {
             url = url + "/page/" + pg;
         }
-        String html = OkHttp.string(url, getHeaders());
-        Document doc = Jsoup.parse(html);
+        Document doc = Jsoup.parse(OkHttp.string(url, getHeaders()));
         JSONArray list = new JSONArray();
         getVods(list, doc);
 
         int page = Integer.parseInt(pg);
         int pageCount = page;
-        Elements nextPage = doc.select("a:contains(下一页)");
-        if (!nextPage.isEmpty()) {
+        if (!doc.select("a:contains(下一页)").isEmpty()) {
             pageCount = page + 1;
         }
 
@@ -110,41 +109,34 @@ public class Czzy extends Spider {
     public String detailContent(List<String> ids) throws Exception {
         String id = ids.get(0);
         String url = siteUrl + id;
-        String html = OkHttp.string(url, getHeaders());
-        Document doc = Jsoup.parse(html);
-        JSONObject result = new JSONObject();
-        JSONArray list = new JSONArray();
-        JSONObject vod = new JSONObject();
+        Document doc = Jsoup.parse(OkHttp.string(url, getHeaders()));
 
+        JSONObject vod = new JSONObject();
         vod.put("vod_id", id);
+
         Element h1 = doc.selectFirst("h1");
         vod.put("vod_name", h1 != null ? h1.text().trim() : "");
 
-        // 封面图选择器修正：用 div.dyimg img
         Element poster = doc.selectFirst("div.dyimg img");
         if (poster != null) {
-            String src = poster.attr("src");
-            if (src.contains("blank.gif")) src = poster.attr("data-original");
-            vod.put("vod_pic", src);
+            String pic = poster.attr("src");
+            if (pic.contains("blank.gif")) pic = poster.attr("data-original");
+            vod.put("vod_pic", pic);
         }
 
-        // 信息
-        Elements infoLis = doc.select("div.moviedteail_list li, .moviedteail_list li");
         StringBuilder info = new StringBuilder();
-        for (Element li : infoLis) {
-            info.append(li.text().trim()).append(" ");
+        for (Element li : doc.select("div.moviedteail_list li, .moviedteail_list li")) {
+            info.append(li.text().trim()).append("\n");
         }
         vod.put("vod_content", info.toString().trim());
 
-        // 播放列表 - 修正格式，单源不加$$$
+        // 播放列表
         Elements playBtns = doc.select("div.paly_list_btn > a");
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".paly_list_btn a");
         }
 
-        StringBuilder vodPlayUrl = new StringBuilder();
-        String vodPlayFrom = "厂长资源";
-
+        StringBuilder playUrl = new StringBuilder();
         for (int i = 0; i < playBtns.size(); i++) {
             Element a = playBtns.get(i);
             String text = a.text().trim();
@@ -152,15 +144,18 @@ public class Czzy extends Spider {
             if (href.startsWith("/")) {
                 href = siteUrl + href;
             }
-            vodPlayUrl.append(text).append("$").append(href);
+            playUrl.append(text).append("$").append(href);
             if (i < playBtns.size() - 1) {
-                vodPlayUrl.append("#");
+                playUrl.append("#");
             }
         }
 
-        vod.put("vod_play_from", vodPlayFrom);
-        vod.put("vod_play_url", vodPlayUrl.toString());
+        vod.put("vod_play_from", "厂长资源");
+        vod.put("vod_play_url", playUrl.toString());
+
+        JSONArray list = new JSONArray();
         list.put(vod);
+        JSONObject result = new JSONObject();
         result.put("list", list);
         return result.toString();
     }
@@ -168,8 +163,7 @@ public class Czzy extends Spider {
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         String url = siteUrl + "/nimasile/?q=" + URLEncoder.encode(key, "UTF-8");
-        String html = OkHttp.string(url, getHeaders());
-        Document doc = Jsoup.parse(html);
+        Document doc = Jsoup.parse(OkHttp.string(url, getHeaders()));
         JSONObject result = new JSONObject();
         JSONArray list = new JSONArray();
         getVods(list, doc);
@@ -179,8 +173,7 @@ public class Czzy extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        String html = OkHttp.string(id, getHeaders());
-        Document doc = Jsoup.parse(html);
+        Document doc = Jsoup.parse(OkHttp.string(id, getHeaders()));
         Element iframe = doc.selectFirst("iframe");
         if (iframe != null) {
             String src = iframe.attr("src");
@@ -189,7 +182,7 @@ public class Czzy extends Spider {
                 result.put("parse", 0);
                 result.put("playUrl", "");
                 result.put("url", src);
-                result.put("header", new JSONObject().put("User-Agent", "Mozilla/5.0").toString());
+                result.put("header", "");
                 return result.toString();
             }
         }
@@ -202,13 +195,11 @@ public class Czzy extends Spider {
     }
 
     private void getVods(JSONArray list, Document doc) throws JSONException {
-        Elements uls = doc.select("ul");
-        for (Element ul : uls) {
+        for (Element ul : doc.select("ul")) {
             if (!ul.className().isEmpty()) continue;
             Elements lis = ul.select("> li");
             if (lis.size() < 2) continue;
-            Element firstA = lis.first() != null ? lis.first().selectFirst("a[href*=/movie/]") : null;
-            if (firstA == null) continue;
+            if (lis.first() == null || lis.first().selectFirst("a[href*=/movie/]") == null) continue;
 
             for (Element li : lis) {
                 Element a = li.selectFirst("a[href*=/movie/]");
@@ -225,15 +216,13 @@ public class Czzy extends Spider {
                     if (pic.isEmpty()) pic = img.attr("src");
                 }
 
-                Element dytit = li.selectFirst("h3.dytit a");
-                if (dytit != null && name.isEmpty()) {
-                    name = dytit.text().trim();
+                if (name.isEmpty()) {
+                    Element dytit = li.selectFirst("h3.dytit a");
+                    if (dytit != null) name = dytit.text().trim();
                 }
 
                 Element hdinfo = li.selectFirst("div.hdinfo span");
-                if (hdinfo != null) {
-                    remark = hdinfo.text().trim();
-                }
+                if (hdinfo != null) remark = hdinfo.text().trim();
 
                 if (!href.isEmpty() && !name.isEmpty()) {
                     JSONObject vod = new JSONObject();
