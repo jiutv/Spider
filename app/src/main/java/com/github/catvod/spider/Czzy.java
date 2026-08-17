@@ -140,6 +140,7 @@ public class Czzy extends Spider {
         }
         vod.put("vod_content", info.toString().trim());
 
+        // 播放列表 - 关键修复：vod_play_from 和 vod_play_url 必须是字符串
         Elements playBtns = doc.select("div.paly_list_btn > a");
         if (playBtns.isEmpty()) {
             playBtns = doc.select(".paly_list_btn a");
