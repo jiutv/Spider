@@ -14,8 +14,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.net.URI;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -218,110 +216,28 @@ public class Czzy extends Spider {
                     iframeSrc = siteUrl + "/" + iframeSrc;
                 }
 
-                // 厂长资源是免嗅源：m3u8 直链直接写在 iframe src 的 url= 参数里
-                String m3u8Url = extractUrlFromIframeSrc(iframeSrc);
-
-                if (m3u8Url != null && !m3u8Url.isEmpty()) {
-                    // 【关键修复】对中文路径进行 URL 编码，避免 IJKPlayer 超时
-                    m3u8Url = safeUrl(m3u8Url);
-
-                    JSONObject result = new JSONObject();
-                    result.put("parse", 0);   // 免嗅
-                    result.put("playUrl", "");
-                    result.put("url", m3u8Url);
-                    JSONObject headerJson = new JSONObject();
-                    headerJson.put("Referer", iframeSrc);
-                    headerJson.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                    result.put("header", headerJson.toString());
-                    return result.toString();
-                }
+                // 【最佳方案】直接让 TVBox WebView 加载 iframe 播放器页面
+                // 网页上就是这么播的：播放页 → iframe → 播放器加载 m3u8
+                // TVBox WebView 加载 iframe 页面后，自动嗅探视频，和浏览器完全一致
+                JSONObject result = new JSONObject();
+                result.put("parse", 1);
+                result.put("playUrl", "");
+                result.put("url", iframeSrc);
+                JSONObject headerJson = new JSONObject();
+                headerJson.put("Referer", id);  // 带上原始播放页 Referer
+                headerJson.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                result.put("header", headerJson.toString());
+                return result.toString();
             }
         }
 
-        // 无 iframe 时尝试直接提取直链
-        String directM3u8 = extractDirectM3u8(doc);
-        if (directM3u8 != null) {
-            directM3u8 = safeUrl(directM3u8);
-            JSONObject result = new JSONObject();
-            result.put("parse", 0);
-            result.put("playUrl", "");
-            result.put("url", directM3u8);
-            JSONObject headerJson = new JSONObject();
-            headerJson.put("Referer", id);
-            headerJson.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            result.put("header", headerJson.toString());
-            return result.toString();
-        }
-
-        // 最终兜底
+        // 无 iframe 时兜底：加载原始播放页让 WebView 嗅探
         JSONObject result = new JSONObject();
         result.put("parse", 1);
         result.put("playUrl", "");
         result.put("url", id);
         result.put("header", "");
         return result.toString();
-    }
-
-    /**
-     * 从 iframe src 的 url= 参数中提取视频直链
-     */
-    private String extractUrlFromIframeSrc(String iframeSrc) {
-        try {
-            Pattern pattern = Pattern.compile("[?&]url=(https?://[^&\\s\"'<>]+)");
-            Matcher matcher = pattern.matcher(iframeSrc);
-            if (matcher.find()) {
-                String url = matcher.group(1);
-                // 先解码（处理已编码的情况），后续 safeUrl 会重新编码
-                return URLDecoder.decode(url, "UTF-8");
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        return null;
-    }
-
-    /**
-     * 对 URL 中的中文/非 ASCII 字符进行编码，保证 IJK/Exo 都能正常解析
-     */
-    private String safeUrl(String urlStr) {
-        try {
-            return new URI(urlStr).toASCIIString();
-        } catch (Exception e) {
-            return urlStr;
-        }
-    }
-
-    private String extractDirectM3u8(Document doc) {
-        Element video = doc.selectFirst("video[src]");
-        if (video != null) {
-            String src = video.attr("src");
-            if (src.contains(".m3u8") || src.contains(".mp4")) {
-                if (!src.startsWith("http")) {
-                    return siteUrl + (src.startsWith("/") ? src : "/" + src);
-                }
-                return src;
-            }
-        }
-        Element source = doc.selectFirst("source[src]");
-        if (source != null) {
-            String src = source.attr("src");
-            if (src.contains(".m3u8") || src.contains(".mp4")) {
-                if (!src.startsWith("http")) {
-                    return siteUrl + (src.startsWith("/") ? src : "/" + src);
-                }
-                return src;
-            }
-        }
-        Elements scripts = doc.select("script");
-        for (Element script : scripts) {
-            String html = script.html();
-            if (html.contains(".m3u8")) {
-                Pattern p = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8[^\\s\"'<>]*)");
-                Matcher m = p.matcher(html);
-                if (m.find()) return m.group(1);
-            }
-        }
-        return null;
     }
 
     private void getVods(JSONArray list, Document doc) throws JSONException {
