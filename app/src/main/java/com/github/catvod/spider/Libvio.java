@@ -77,7 +77,6 @@ public class Libvio extends Cloud {
 
         Document doc = Jsoup.parse(OkHttp.string(siteUrl, getHeaders()));
 
-        // 分类导航 — 多备选选择器
         Elements menuItems = doc.select("ul.stui-header__menu > li > a");
         if (menuItems.isEmpty()) {
             menuItems = doc.select(".stui-header__menu a, .navbar-nav a, .nav-menu a, .nav-item a, header li a");
@@ -86,14 +85,12 @@ public class Libvio extends Cloud {
             String href = element.attr("href").replace(".html", "");
             String text = element.text().trim();
             if (text.isEmpty()) continue;
-            // 过滤掉主页/首页等非分类项
             if (text.equals("主页") || text.equals("首页")) continue;
             if (href.contains("type") || href.contains("show") || href.startsWith("/")) {
                 classes.add(new Class(href, text));
             }
         }
 
-        // 首页视频列表 — 多备选选择器
         Elements items = doc.select("ul.stui-vodlist > li > div > a");
         if (items.isEmpty()) {
             items = doc.select(".stui-vodlist__box a, .stui-vodlist li a[title], .video-item a, .module-item a, .vodlist-item a");
@@ -119,7 +116,6 @@ public class Libvio extends Cloud {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         List<Vod> list = new ArrayList<>();
 
-        // 支持两种 URL 格式: /show/1-----------.html 或 /type/1-1.html
         String target;
         if (tid.contains("show")) {
             target = siteUrl + tid.replaceFirst("^/", "").replace("-----------", "-" + pg + "-----------");
@@ -152,9 +148,9 @@ public class Libvio extends Cloud {
         Elements pages = doc.select(".stui-page__item a, .pagination a, .page-link");
         for (Element p : pages) {
             String text = p.text();
-            if (text.contains("尾页") || text.contains("末页") || text.contains("\u00bb") || text.contains("Last")) {
+            if (text.contains("尾页") || text.contains("末页") || text.contains("Last")) {
                 String href = p.attr("href");
-                Matcher m = Pattern.compile("-(\d+)\.html").matcher(href);
+                Matcher m = Pattern.compile("-(\\d+)\\.html").matcher(href);
                 if (m.find()) {
                     total = Integer.parseInt(m.group(1)) * 20;
                 }
@@ -170,12 +166,10 @@ public class Libvio extends Cloud {
         String detailUrl = siteUrl + "detail/" + ids.get(0) + ".html";
         Document doc = Jsoup.parse(OkHttp.string(detailUrl, getHeaders()));
 
-        // 影片名称
         String name = "";
         Elements nameEls = doc.select(".stui-content__detail h1, .detail-info h1, h1.title, .movie-title, .video-title, .detail-title h1");
         if (!nameEls.isEmpty()) name = nameEls.first().text().trim();
 
-        // 封面图
         String pic = "";
         Elements picEls = doc.select(".stui-content__thumb img, .detail-pic img, .thumb img, .poster img, .detail-poster img");
         if (!picEls.isEmpty()) {
@@ -183,7 +177,6 @@ public class Libvio extends Cloud {
             if (pic.isEmpty()) pic = picEls.first().attr("src");
         }
 
-        // 播放源标签与列表 — 关键修复：增加大量备选选择器
         Elements tabs = doc.select(".stui-vodlist__head h3, .play-source h3, .tab-item, .source-title, .playlist-title, .play-tab h3, .tab-nav h3, .nav-tabs li");
         Elements playLists = doc.select(".stui-vodlist__head ul.stui-content__playlist, .play-list ul, .playlist ul, .stui-content__playlist, .tab-content .playlist, .play-box ul");
 
@@ -215,12 +208,10 @@ public class Libvio extends Cloud {
             }
         }
 
-        // 如果上面没匹配到，尝试更通用的方式查找播放列表
         if (tabs.isEmpty() || builder.build().vodPlayFrom.isEmpty()) {
             Elements allPlaylists = doc.select("ul.stui-content__playlist, .playlist ul, .play-list");
             Elements allTabs = doc.select(".stui-vodlist__head h3, .tab-item, .source-title");
             if (allTabs.isEmpty() && !allPlaylists.isEmpty()) {
-                // 没有标签但有播放列表，统一命名为"默认"
                 List<Vod.VodPlayBuilder.PlayUrl> playUrls = new ArrayList<>();
                 for (Element element : allPlaylists.first().select("a")) {
                     Vod.VodPlayBuilder.PlayUrl playUrl = new Vod.VodPlayBuilder.PlayUrl();
@@ -232,7 +223,6 @@ public class Libvio extends Cloud {
             }
         }
 
-        // 夸克/UC 网盘资源处理
         String quarkNames = "";
         String quarkUrls = "";
         if (!quarkList.isEmpty()) {
@@ -243,7 +233,7 @@ public class Libvio extends Cloud {
                 Matcher matcher = Pattern.compile("player_aaaa=(.*?)</script>").matcher(detailPageDoc.html());
                 String json = matcher.find() ? matcher.group(1) : "";
                 if (json.isEmpty()) {
-                    matcher = Pattern.compile("player_(\w+)=(\{.*?\})</script>").matcher(detailPageDoc.html());
+                    matcher = Pattern.compile("player_(\\w+)=(\\{.*?\\})</script>").matcher(detailPageDoc.html());
                     if (matcher.find()) json = matcher.group(2);
                 }
                 if (!json.isEmpty()) {
@@ -315,7 +305,7 @@ public class Libvio extends Cloud {
         Matcher matcher = Pattern.compile("player_aaaa=(.*?)</script>").matcher(doc.html());
         String json = matcher.find() ? matcher.group(1) : "";
         if (json.isEmpty()) {
-            matcher = Pattern.compile("player_(\w+)=(\{.*?\})</script>").matcher(doc.html());
+            matcher = Pattern.compile("player_(\\w+)=(\\{.*?\\})</script>").matcher(doc.html());
             if (matcher.find()) json = matcher.group(2);
         }
 
@@ -339,7 +329,7 @@ public class Libvio extends Cloud {
         String src = matcher1.find() ? matcher1.group(1) : "";
 
         if (src.isEmpty()) {
-            matcher1 = Pattern.compile("src=\"(.*?)'").matcher(paurl);
+            matcher1 = Pattern.compile("src=\"(.*?)\'").matcher(paurl);
             src = matcher1.find() ? matcher1.group(1) : "";
         }
 
