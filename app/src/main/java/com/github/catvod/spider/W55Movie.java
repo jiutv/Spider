@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 public class W55Movie extends Spider {
 
     // ========== 修正：使用实际主域名 ==========
-    private static String siteUrl = "https://www.555dy.net";
+    private static String siteUrl = "http://www.555dy7.com";
     private static String detailUrl = siteUrl + "/voddetail/";
     private static String playUrl = siteUrl + "/vodplay/";
     private static String searchUrl = siteUrl + "/vodsearch/";
