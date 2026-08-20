@@ -31,7 +31,13 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class Gz360 extends Spider {
 
-    public static final String[] API_URLS = {"https://apinew.uozvr.com", "https://api.w32z7vtd.com", "https://api.6a7nnf7.com", "https://api.umygrx3.com", "https://api.rmedphk.com"};
+    public static final String[] API_URLS = {
+        "https://apinew.uozvr.com",
+        "https://api.w32z7vtd.com",
+        "https://api.6a7nnf7.com",
+        "https://api.umygrx3.com",
+        "https://api.rmedphk.com"
+    };
 
     public final HashMap<String, String> subMap = new HashMap<>();
     public int urlIndex = 0;
@@ -200,6 +206,11 @@ public class Gz360 extends Spider {
         return Result.error("详情获取失败");
     }
 
+    /**
+     * ========== 修复：首页添加推荐视频列表 ==========
+     * 原代码只返回了 class + filters，缺少 list，导致首页空白。
+     * 现在取电影(tid=1)第一页作为推荐内容。
+     */
     public String homeContent(boolean z) {
         ArrayList<Class> classes = new ArrayList<>();
         classes.add(new Class("1", "电影"));
@@ -260,7 +271,32 @@ public class Gz360 extends Spider {
         filters.put("73", sortOnly);
         filters.put("74", sortOnly);
 
-        return Result.string(classes, filters);
+        // ========== 新增：获取首页推荐视频 ==========
+        ArrayList<Vod> recommendList = new ArrayList<>();
+        try {
+            // 取电影分类(tid=1)第一页作为首页推荐
+            JsonObject params = new JsonObject();
+            params.addProperty("tid", "1");
+            params.addProperty("page", "1");
+            params.addProperty("sort", "d_id");
+            params.addProperty("area", "0");
+            params.addProperty("sub", "5"); // 全部
+            params.addProperty("year", "0");
+            params.addProperty("pageSize", "30");
+            JsonObject response = callApiWithRetry(params, "/App/IndexList/indexList");
+            if (response != null && response.has("list")) {
+                Iterator<JsonElement> it = response.getAsJsonArray("list").iterator();
+                int count = 0;
+                while (it.hasNext() && count < 18) { // 首页最多显示18条
+                    recommendList.add(toVod(it.next().getAsJsonObject()));
+                    count++;
+                }
+            }
+        } catch (Exception e) {
+            // 推荐获取失败不影响分类展示
+        }
+
+        return Result.get().classes(classes).filters(filters).vod(recommendList).string();
     }
 
     public void init(android.content.Context context, String str) {
