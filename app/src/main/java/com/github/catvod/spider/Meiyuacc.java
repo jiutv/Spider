@@ -1,8 +1,8 @@
 package com.github.catvod.spider;
 
+import android.content.Context;
+import com.github.catvod.bean.Class;
 import com.github.catvod.crawler.Spider;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -13,6 +13,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 
 /**
  * TVBox Spider for meiyuacct.com (美影视)
+ * 基于 lushunming/AndroidCatVodSpider 的 Spider 基类
  * 基于 MacCMS (苹果CMS) 标准模板结构开发
  *
  * URL 模式：
@@ -29,8 +31,7 @@ import java.util.regex.Pattern;
  *   播放页:   /p/{vod_id}-{flag}-{episode}.html
  *   搜索:    /vodsearch/{keyword}----------{page}---.html
  *
- * 分类ID:
- *   1=电影 2=电视剧 3=综艺 4=动漫 26=短剧
+ * 分类ID: 1=电影 2=电视剧 3=综艺 4=动漫 26=短剧
  */
 public class Meiyuacc extends Spider {
 
@@ -38,186 +39,75 @@ public class Meiyuacc extends Spider {
     private static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     private static final int TIMEOUT = 15000;
 
+    // ======================== 初始化 ========================
+
+    @Override
+    public void init(Context context) {
+    }
+
     // ======================== 首页内容 ========================
 
-    /**
-     * 首页内容: 返回分类列表 + 推荐视频
-     * @param filter 是否包含筛选
-     */
     @Override
     public String homeContent(boolean filter) {
-        JSONObject result = new JSONObject();
+        // 分类列表 (用 List<Class> 转 JSON 格式返回)
+        List<Class> classes = new ArrayList<>();
+        classes.add(new Class("1", "电影"));
+        classes.add(new Class("2", "电视剧"));
+        classes.add(new Class("3", "综艺"));
+        classes.add(new Class("4", "动漫"));
+        classes.add(new Class("26", "短剧"));
 
-        // 分类列表
-        JSONArray classes = new JSONArray();
-        classes.put(buildClass("1", "电影"));
-        classes.put(buildClass("2", "电视剧"));
-        classes.put(buildClass("3", "综艺"));
-        classes.put(buildClass("4", "动漫"));
-        classes.put(buildClass("26", "短剧"));
-        result.put("class", classes);
-
-        // 筛选配置
-        if (filter) {
-            JSONObject filters = new JSONObject();
-            filters.put("1", getFilterArray("1"));
-            filters.put("2", getFilterArray("2"));
-            filters.put("3", getFilterArray("3"));
-            filters.put("4", getFilterArray("4"));
-            filters.put("26", getFilterArray("26"));
-            result.put("filters", filters);
+        StringBuilder classJson = new StringBuilder("[");
+        for (int i = 0; i < classes.size(); i++) {
+            if (i > 0) classJson.append(",");
+            classJson.append("{\"type_id\":\"").append(classes.get(i).getTypeId()).append("\"")
+                    .append(",\"type_name\":\"").append(classes.get(i).getTypeName()).append("\"}");
         }
+        classJson.append("]");
+
         // 首页推荐列表 (爬取电影分类第一页)
+        String listJson = "[]";
         try {
-            JSONArray list = fetchVideoList(SITE_URL + "/vodshow/1--------1---.html");
-            result.put("list", list);
-        } catch (Exception e) {
-            result.put("list", new JSONArray());
+            listJson = fetchVideoListJson(SITE_URL + "/vodshow/1--------1---.html");
+        } catch (Exception ignored) {
         }
+
+        // 组装结果
+        StringBuilder result = new StringBuilder();
+        result.append("{");
+        result.append("\"class\":").append(classJson).append(",");
+        result.append("\"list\":").append(listJson);
+        result.append("}");
 
         return result.toString();
-    }
-
-    // ======================== 筛选条件 ========================
-
-    /**
-     * 返回分类筛选条件 (辅助方法，筛选数据同时在 homeContent 中返回)
-     * @param tid 分类ID
-     */
-    private JSONArray getFilter(String tid) {
-        return getFilterArray(tid);
-    }
-
-    /**
-     * 获取分类筛选的 JSONArray
-     */
-    private JSONArray getFilterArray(String tid) {
-        JSONArray filters = new JSONArray();
-
-        switch (tid) {
-            case "1": // 电影
-                filters.put(buildFilter("class", "类型", new String[][]{
-                    {"全部", ""}, {"动作片", "动作片"}, {"喜剧片", "喜剧片"},
-                    {"爱情片", "爱情片"}, {"科幻片", "科幻片"}, {"剧情片", "剧情片"},
-                    {"恐怖片", "恐怖片"}, {"战争片", "战争片"}, {"纪录片", "纪录片"},
-                    {"悬疑片", "悬疑片"}, {"惊悚片", "惊悚片"}
-                }));
-                filters.put(buildFilter("area", "地区", new String[][]{
-                    {"全部", ""}, {"中国", "中国"}, {"美国", "美国"}, {"英国", "英国"},
-                    {"日本", "日本"}, {"韩国", "韩国"}, {"法国", "法国"},
-                    {"印度", "印度"}, {"泰国", "泰国"}
-                }));
-                filters.put(buildFilter("year", "年份", new String[][]{
-                    {"全部", ""}, {"2026", "2026"}, {"2025", "2025"}, {"2024", "2024"},
-                    {"2023", "2023"}, {"2022", "2022"}, {"2021", "2021"},
-                    {"2020", "2020"}, {"2019", "2019"}, {"2018", "2018"}
-                }));
-                filters.put(buildFilter("by", "排序", new String[][]{
-                    {"最新", "time"}, {"热门", "hits"}, {"评分", "score"}
-                }));
-                break;
-
-            case "2": // 电视剧
-                filters.put(buildFilter("class", "类型", new String[][]{
-                    {"全部", ""}, {"美剧", "美剧"}, {"泰剧", "泰剧"}, {"日剧", "日剧"},
-                    {"韩剧", "韩剧"}, {"国产剧", "国产剧"}, {"港剧", "港剧"}, {"英剧", "英剧"}
-                }));
-                filters.put(buildFilter("area", "地区", new String[][]{
-                    {"全部", ""}, {"中国", "中国"}, {"美国", "美国"},
-                    {"日本", "日本"}, {"韩国", "韩国"}, {"泰国", "泰国"}, {"英国", "英国"}
-                }));
-                filters.put(buildFilter("year", "年份", new String[][]{
-                    {"全部", ""}, {"2026", "2026"}, {"2025", "2025"}, {"2024", "2024"},
-                    {"2023", "2023"}, {"2022", "2022"}, {"2021", "2021"}, {"2020", "2020"}
-                }));
-                filters.put(buildFilter("by", "排序", new String[][]{
-                    {"最新", "time"}, {"热门", "hits"}, {"评分", "score"}
-                }));
-                break;
-
-            case "3": // 综艺
-                filters.put(buildFilter("class", "类型", new String[][]{
-                    {"全部", ""}, {"综艺", "综艺"}, {"真人秀", "真人秀"},
-                    {"脱口秀", "脱口秀"}, {"选秀", "选秀"}, {"情感", "情感"}
-                }));
-                filters.put(buildFilter("area", "地区", new String[][]{
-                    {"全部", ""}, {"中国", "中国"}, {"美国", "美国"},
-                    {"日本", "日本"}, {"韩国", "韩国"}
-                }));
-                filters.put(buildFilter("year", "年份", new String[][]{
-                    {"全部", ""}, {"2026", "2026"}, {"2025", "2025"},
-                    {"2024", "2024"}, {"2023", "2023"}
-                }));
-                filters.put(buildFilter("by", "排序", new String[][]{
-                    {"最新", "time"}, {"热门", "hits"}, {"评分", "score"}
-                }));
-                break;
-
-            case "4": // 动漫
-                filters.put(buildFilter("class", "类型", new String[][]{
-                    {"全部", ""}, {"动漫", "动漫"}, {"日韩动漫", "日韩动漫"},
-                    {"国产动漫", "国产动漫"}, {"欧美动漫", "欧美动漫"}, {"动态漫画", "动态漫画"}
-                }));
-                filters.put(buildFilter("area", "地区", new String[][]{
-                    {"全部", ""}, {"中国", "中国"}, {"日本", "日本"},
-                    {"美国", "美国"}, {"韩国", "韩国"}
-                }));
-                filters.put(buildFilter("year", "年份", new String[][]{
-                    {"全部", ""}, {"2026", "2026"}, {"2025", "2025"},
-                    {"2024", "2024"}, {"2023", "2023"}
-                }));
-                filters.put(buildFilter("by", "排序", new String[][]{
-                    {"最新", "time"}, {"热门", "hits"}, {"评分", "score"}
-                }));
-                break;
-
-            case "26": // 短剧
-                filters.put(buildFilter("class", "类型", new String[][]{
-                    {"全部", ""}, {"短剧", "短剧"}
-                }));
-                filters.put(buildFilter("year", "年份", new String[][]{
-                    {"全部", ""}, {"2026", "2026"}, {"2025", "2025"}, {"2024", "2024"}
-                }));
-                filters.put(buildFilter("by", "排序", new String[][]{
-                    {"最新", "time"}, {"热门", "hits"}
-                }));
-                break;
-        }
-
-        return filters;
     }
 
     // ======================== 分类列表 ========================
 
     /**
-     * 获取分类内容列表
      * @param tid    分类ID
-     * @param pg     页码 (字符串)
-     * @param filter 筛选条件 (JSON字符串)
-     * @param extend 扩展参数 (字符串)
+     * @param pg     页码
+     * @param filter 是否显示筛选 (true=显示筛选UI)
+     * @param extend 筛选参数 HashMap (class/area/year/by 等)
      */
     @Override
-    public String categoryContent(String tid, String pg, String filter, String extend) {
+    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             int page = parseInt(pg, 1);
 
-            // 解析筛选条件 JSON
+            // 从 extend HashMap 中获取筛选参数
             String classFilter = "";
             String areaFilter = "";
             String langFilter = "";
             String yearFilter = "";
             String byFilter = "";
 
-            if (filter != null && !filter.isEmpty()) {
-                try {
-                    JSONObject filterObj = new JSONObject(filter);
-                    classFilter = filterObj.optString("class", "");
-                    areaFilter = filterObj.optString("area", "");
-                    langFilter = filterObj.optString("lang", "");
-                    yearFilter = filterObj.optString("year", "");
-                    byFilter = filterObj.optString("by", "");
-                } catch (Exception ignored) {
-                }
+            if (extend != null) {
+                if (extend.containsKey("class")) classFilter = extend.get("class");
+                if (extend.containsKey("area")) areaFilter = extend.get("area");
+                if (extend.containsKey("lang")) langFilter = extend.get("lang");
+                if (extend.containsKey("year")) yearFilter = extend.get("year");
+                if (extend.containsKey("by")) byFilter = extend.get("by");
             }
 
             // MacCMS URL格式: /vodshow/{type_id}-{class}-{area}-{lang}-{year}-{by}-{letter}-{page}---.html
@@ -230,18 +120,21 @@ public class Meiyuacc extends Spider {
                     + "-" + "-" + page + "---.html";
 
             Document doc = fetchDoc(url);
-            JSONArray list = parseVideoList(doc);
+            String listJson = parseVideoListJson(doc);
 
             // 解析分页信息
             int pageCount = parsePageCount(doc);
-            int limit = list.length() > 0 ? list.length() : 12;
+            int limit = 12;
 
-            JSONObject result = new JSONObject();
-            result.put("page", page);
-            result.put("pagecount", pageCount);
-            result.put("limit", limit);
-            result.put("total", pageCount * limit);
-            result.put("list", list);
+            // 组装结果
+            StringBuilder result = new StringBuilder();
+            result.append("{");
+            result.append("\"page\":").append(page).append(",");
+            result.append("\"pagecount\":").append(pageCount).append(",");
+            result.append("\"limit\":").append(limit).append(",");
+            result.append("\"total\":").append(pageCount * limit).append(",");
+            result.append("\"list\":").append(listJson);
+            result.append("}");
 
             return result.toString();
 
@@ -252,10 +145,6 @@ public class Meiyuacc extends Spider {
 
     // ======================== 详情页 ========================
 
-    /**
-     * 获取视频详情
-     * @param ids 视频ID列表
-     */
     @Override
     public String detailContent(List<String> ids) {
         try {
@@ -263,49 +152,48 @@ public class Meiyuacc extends Spider {
             String url = SITE_URL + "/vod/" + vodId + ".html";
             Document doc = fetchDoc(url);
 
-            JSONObject vod = new JSONObject();
-            vod.put("vod_id", vodId);
-
             // 提取标题
             String title = extractText(doc, ".module-info-heading h1, .video-info-title h1, .stui-content__detail .title, h1.title, .module-info-title");
             if (title.isEmpty()) {
                 Element titleEl = doc.selectFirst("h1");
                 title = titleEl != null ? titleEl.text().trim() : "";
             }
-            vod.put("vod_name", title);
 
             // 提取封面图片
             String pic = extractImg(doc, ".module-info-pic img, .stui-content__thumb img, .video-pic img, .module-info-poster img");
-            vod.put("vod_pic", pic);
 
-            // 提取详细信息 (类型/地区/年份/状态/语言/导演/主演/简介)
-            parseDetailInfo(doc, vod);
+            // 提取详细信息
+            HashMap<String, String> info = parseDetailInfoMap(doc);
 
             // 提取播放线路和剧集
-            parsePlayList(doc, vod, vodId);
+            String[] playData = parsePlayListData(doc, vodId);
 
-            JSONArray list = new JSONArray();
-            list.put(vod);
+            // 组装 vod JSON
+            StringBuilder vod = new StringBuilder();
+            vod.append("{");
+            vod.append("\"vod_id\":\"").append(escapeJson(vodId)).append("\",");
+            vod.append("\"vod_name\":\"").append(escapeJson(title)).append("\",");
+            vod.append("\"vod_pic\":\"").append(escapeJson(pic)).append("\",");
+            vod.append("\"vod_remarks\":\"").append(escapeJson(info.get("remarks") == null ? "" : info.get("remarks"))).append("\",");
+            vod.append("\"type_name\":\"").append(escapeJson(info.get("type") == null ? "" : info.get("type"))).append("\",");
+            vod.append("\"vod_area\":\"").append(escapeJson(info.get("area") == null ? "" : info.get("area"))).append("\",");
+            vod.append("\"vod_year\":\"").append(escapeJson(info.get("year") == null ? "" : info.get("year"))).append("\",");
+            vod.append("\"vod_director\":\"").append(escapeJson(info.get("director") == null ? "" : info.get("director"))).append("\",");
+            vod.append("\"vod_actor\":\"").append(escapeJson(info.get("actor") == null ? "" : info.get("actor"))).append("\",");
+            vod.append("\"vod_content\":\"").append(escapeJson(info.get("content") == null ? "" : info.get("content"))).append("\",");
+            vod.append("\"vod_play_from\":\"").append(escapeJson(playData[0])).append("\",");
+            vod.append("\"vod_play_url\":\"").append(escapeJson(playData[1])).append("\"");
+            vod.append("}");
 
-            JSONObject result = new JSONObject();
-            result.put("list", list);
-            return result.toString();
+            return "{\"list\":[" + vod.toString() + "]}";
 
         } catch (Exception e) {
-            JSONObject result = new JSONObject();
-            result.put("list", new JSONArray());
-            return result.toString();
+            return "{\"list\":[]}";
         }
     }
 
     // ======================== 播放解析 ========================
 
-    /**
-     * 获取播放地址
-     * @param flag     播放线路名称
-     * @param id       播放标识 (如 /p/175408-4-1.html)
-     * @param vipFlags VIP 线路标志列表
-     */
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
         try {
@@ -326,14 +214,14 @@ public class Meiyuacc extends Spider {
                 playerJson = extractPlayerVar(html, "player_data");
             }
 
-            JSONObject result = new JSONObject();
+            StringBuilder result = new StringBuilder();
+            result.append("{");
 
             if (playerJson != null && !playerJson.isEmpty()) {
-                JSONObject player = new JSONObject(playerJson);
-
-                // 获取视频URL
-                String videoUrl = player.optString("url", "");
-                int encrypt = player.optInt("encrypt", 0);
+                // 简单解析 JSON 提取 url 和 encrypt
+                String videoUrl = extractJsonValue(playerJson, "url");
+                String encryptStr = extractJsonValue(playerJson, "encrypt");
+                int encrypt = parseInt(encryptStr, 0);
 
                 // 根据 encrypt 字段解码URL
                 videoUrl = decodeVideoUrl(videoUrl, encrypt);
@@ -341,56 +229,40 @@ public class Meiyuacc extends Spider {
                 // 判断是否需要解析
                 int parse = isDirectVideo(videoUrl) ? 0 : 1;
 
-                result.put("parse", parse);
-                result.put("header", getPlayHeaders());
-                result.put("playUrl", "");
-                result.put("url", videoUrl);
+                result.append("\"parse\":").append(parse).append(",");
+                result.append("\"header\":\"{\\\"User-Agent\\\":\\\"").append(escapeJson(UA)).append("\\\"\\\",\\\"Referer\\\":\\\"").append(escapeJson(SITE_URL)).append("\\\"}\",");
+                result.append("\"playUrl\":\"\",");
+                result.append("\"url\":\"").append(escapeJson(videoUrl)).append("\"");
 
             } else {
                 // 尝试直接从页面中提取视频URL
                 String directUrl = extractDirectVideoUrl(html);
                 if (!directUrl.isEmpty()) {
-                    result.put("parse", 0);
-                    result.put("header", "");
-                    result.put("playUrl", "");
-                    result.put("url", directUrl);
+                    result.append("\"parse\":0,");
+                    result.append("\"header\":\"\",");
+                    result.append("\"playUrl\":\"\",");
+                    result.append("\"url\":\"").append(escapeJson(directUrl)).append("\"");
                 } else {
                     // 尝试查找 iframe
                     Element iframe = doc.selectFirst("iframe[src]");
-                    if (iframe != null) {
-                        result.put("parse", 1);
-                        result.put("header", "");
-                        result.put("playUrl", "");
-                        result.put("url", iframe.attr("src"));
-                    } else {
-                        // 默认返回播放页URL，让TVBox自行解析
-                        result.put("parse", 1);
-                        result.put("header", "");
-                        result.put("playUrl", "");
-                        result.put("url", playUrl);
-                    }
+                    String iframeSrc = iframe != null ? iframe.attr("src") : playUrl;
+                    result.append("\"parse\":1,");
+                    result.append("\"header\":\"\",");
+                    result.append("\"playUrl\":\"\",");
+                    result.append("\"url\":\"").append(escapeJson(iframeSrc)).append("\"");
                 }
             }
 
+            result.append("}");
             return result.toString();
 
         } catch (Exception e) {
-            JSONObject result = new JSONObject();
-            result.put("parse", 1);
-            result.put("header", "");
-            result.put("playUrl", "");
-            result.put("url", "");
-            return result.toString();
+            return "{\"parse\":1,\"header\":\"\",\"playUrl\":\"\",\"url\":\"\"}";
         }
     }
 
     // ======================== 搜索 ========================
 
-    /**
-     * 搜索影片
-     * @param key   搜索关键词
-     * @param quick 是否快速搜索
-     */
     @Override
     public String searchContent(String key, boolean quick) {
         try {
@@ -398,24 +270,17 @@ public class Meiyuacc extends Spider {
             String url = SITE_URL + "/vodsearch/" + encodedKey + "----------1---.html";
 
             Document doc = fetchDoc(url);
-            JSONArray list = parseVideoList(doc);
+            String listJson = parseVideoListJson(doc);
 
-            JSONObject result = new JSONObject();
-            result.put("list", list);
-            return result.toString();
+            return "{\"list\":" + listJson + "}";
 
         } catch (Exception e) {
-            JSONObject result = new JSONObject();
-            result.put("list", new JSONArray());
-            return result.toString();
+            return "{\"list\":[]}";
         }
     }
 
     // ======================== 辅助方法 ========================
 
-    /**
-     * 判断URL是否为直接视频格式
-     */
     @Override
     public boolean isVideoFormat(String url) {
         if (url == null || url.isEmpty()) return false;
@@ -426,60 +291,30 @@ public class Meiyuacc extends Spider {
     }
 
     /**
-     * 构建分类项
+     * 从 URL 获取视频列表 JSON 字符串
      */
-    private JSONObject buildClass(String id, String name) {
-        JSONObject cls = new JSONObject();
-        cls.put("type_id", id);
-        cls.put("type_name", name);
-        return cls;
-    }
-
-    /**
-     * 构建单个筛选条件项
-     */
-    private JSONObject buildFilter(String key, String name, String[][] options) {
-        JSONObject filter = new JSONObject();
-        filter.put("key", key);
-        filter.put("name", name);
-
-        JSONArray valueList = new JSONArray();
-        for (String[] option : options) {
-            JSONObject opt = new JSONObject();
-            opt.put("n", option[0]);
-            opt.put("v", option[1]);
-            valueList.put(opt);
-        }
-        filter.put("value", valueList);
-
-        return filter;
-    }
-
-    /**
-     * 从 URL 获取视频列表 JSONArray
-     */
-    private JSONArray fetchVideoList(String url) throws Exception {
+    private String fetchVideoListJson(String url) throws Exception {
         Document doc = fetchDoc(url);
-        return parseVideoList(doc);
+        return parseVideoListJson(doc);
     }
 
     /**
-     * 从 Document 解析视频列表
+     * 从 Document 解析视频列表，返回 JSON 字符串
      */
-    private JSONArray parseVideoList(Document doc) {
-        JSONArray list = new JSONArray();
+    private String parseVideoListJson(Document doc) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
 
         // 解析视频列表项 - 兼容多种 MacCMS 模板
         Elements items = doc.select(".module-item, .search-list-item, .stui-vodlist__box, .myui-vodlist__box, .vodlist_item, .module-search-item");
 
-        // 如果没有找到，尝试更通用的方式: 找包含 /vod/ 链接且有图片的元素
+        // 如果没有找到，尝试更通用的方式
         if (items.isEmpty()) {
             items = new Elements();
             Elements links = doc.select("a[href*=/vod/]");
             for (Element link : links) {
                 Element parent = link.parent();
                 if (parent != null && parent.select("img").size() > 0) {
-                    // 避免重复添加
                     boolean alreadyAdded = false;
                     for (Element existing : items) {
                         if (existing.equals(parent)) { alreadyAdded = true; break; }
@@ -491,14 +326,23 @@ public class Meiyuacc extends Spider {
             }
         }
 
+        boolean first = true;
         for (Element item : items) {
-            JSONObject vod = parseListItem(item);
-            if (vod != null && vod.has("vod_id")) {
-                list.put(vod);
+            HashMap<String, String> vod = parseListItemMap(item);
+            if (vod != null && vod.containsKey("vod_id")) {
+                if (!first) sb.append(",");
+                first = false;
+                sb.append("{");
+                sb.append("\"vod_id\":\"").append(escapeJson(vod.get("vod_id"))).append("\",");
+                sb.append("\"vod_name\":\"").append(escapeJson(vod.get("vod_name"))).append("\",");
+                sb.append("\"vod_pic\":\"").append(escapeJson(vod.get("vod_pic"))).append("\",");
+                sb.append("\"vod_remarks\":\"").append(escapeJson(vod.get("vod_remarks"))).append("\"");
+                sb.append("}");
             }
         }
 
-        return list;
+        sb.append("]");
+        return sb.toString();
     }
 
     /**
@@ -517,11 +361,11 @@ public class Meiyuacc extends Spider {
     }
 
     /**
-     * 解析列表项
+     * 解析列表项，返回 HashMap
      */
-    private JSONObject parseListItem(Element item) {
+    private HashMap<String, String> parseListItemMap(Element item) {
         try {
-            JSONObject vod = new JSONObject();
+            HashMap<String, String> vod = new HashMap<>();
 
             // 提取链接和ID
             Element link = item.selectFirst("a[href*=/vod/]");
@@ -546,7 +390,7 @@ public class Meiyuacc extends Spider {
             // 提取封面图
             String pic = extractImg(item, "img");
 
-            // 提取备注 (HD中字/更新至xx集/已完结等)
+            // 提取备注
             String remarks = extractText(item, ".module-item-text, .pic-text, .remarks, .module-item-note, .tag");
             if (remarks.isEmpty()) {
                 Element tagEl = item.selectFirst(".tag, .badge, .status, .quality, .label");
@@ -568,39 +412,24 @@ public class Meiyuacc extends Spider {
     }
 
     /**
-     * 解析详情页信息
+     * 解析详情页信息，返回 HashMap
      */
-    private void parseDetailInfo(Document doc, JSONObject vod) {
-        // 提取类型
-        String type = extractByLabel(doc, "类型");
-        if (!type.isEmpty()) vod.put("type_name", type);
+    private HashMap<String, String> parseDetailInfoMap(Document doc) {
+        HashMap<String, String> info = new HashMap<>();
 
-        // 提取地区
-        String area = extractByLabel(doc, "地区");
-        if (!area.isEmpty()) vod.put("vod_area", area);
-
-        // 提取年份
+        info.put("type", extractByLabel(doc, "类型"));
+        info.put("area", extractByLabel(doc, "地区"));
         String year = extractByLabel(doc, "年份");
         if (year.isEmpty()) year = extractByLabel(doc, "年代");
-        if (!year.isEmpty()) vod.put("vod_year", year);
-
-        // 提取状态
+        info.put("year", year);
         String state = extractByLabel(doc, "状态");
         if (state.isEmpty()) state = extractByLabel(doc, "更新");
-        if (!state.isEmpty()) vod.put("vod_state", state);
-
-        // 提取语言
-        String lang = extractByLabel(doc, "语言");
-        if (!lang.isEmpty()) vod.put("vod_lang", lang);
-
-        // 提取导演
-        String director = extractByLabel(doc, "导演");
-        if (!director.isEmpty()) vod.put("vod_director", director);
-
-        // 提取主演
+        info.put("remarks", state);
+        info.put("lang", extractByLabel(doc, "语言"));
+        info.put("director", extractByLabel(doc, "导演"));
         String actor = extractByLabel(doc, "主演");
         if (actor.isEmpty()) actor = extractByLabel(doc, "演员");
-        if (!actor.isEmpty()) vod.put("vod_actor", actor);
+        info.put("actor", actor);
 
         // 提取简介
         String content = extractByLabel(doc, "简介");
@@ -611,17 +440,18 @@ public class Meiyuacc extends Spider {
                 content = descEl.text().trim();
             }
         }
-        if (!content.isEmpty()) vod.put("vod_content", content);
+        info.put("content", content);
 
-        // 提取更新时间
-        String updateTime = extractByLabel(doc, "更新");
-        if (!updateTime.isEmpty()) vod.put("vod_pubdate", updateTime);
+        return info;
     }
 
     /**
-     * 解析播放列表
+     * 解析播放列表，返回 [playFrom, playUrl]
      */
-    private void parsePlayList(Document doc, JSONObject vod, String vodId) {
+    private String[] parsePlayListData(Document doc, String vodId) {
+        String playFrom = "";
+        String playUrl = "";
+
         // 查找播放路线选项卡
         Elements tabs = doc.select("a[href*=playlist], .module-player-list-tab a, .tab-list a, .playlist-tab a");
 
@@ -652,8 +482,8 @@ public class Meiyuacc extends Spider {
 
         // 如果按链接分组成功
         if (!routeMap.isEmpty()) {
-            StringBuilder playFrom = new StringBuilder();
-            StringBuilder playUrl = new StringBuilder();
+            StringBuilder fromSb = new StringBuilder();
+            StringBuilder urlSb = new StringBuilder();
             boolean first = true;
 
             for (Map.Entry<String, List<String[]>> entry : routeMap.entrySet()) {
@@ -671,24 +501,24 @@ public class Meiyuacc extends Spider {
                 }
 
                 if (!first) {
-                    playFrom.append("$$$");
-                    playUrl.append("$$$");
+                    fromSb.append("$$$");
+                    urlSb.append("$$$");
                 }
                 first = false;
 
-                playFrom.append(routeName);
+                fromSb.append(routeName);
 
                 StringBuilder epList = new StringBuilder();
                 for (int i = 0; i < episodes.size(); i++) {
                     if (i > 0) epList.append("#");
                     epList.append(episodes.get(i)[0]).append("$").append(episodes.get(i)[1]);
                 }
-                playUrl.append(epList);
+                urlSb.append(epList);
             }
 
-            vod.put("vod_play_from", playFrom.toString());
-            vod.put("vod_play_url", playUrl.toString());
-            return;
+            playFrom = fromSb.toString();
+            playUrl = urlSb.toString();
+            return new String[]{playFrom, playUrl};
         }
 
         // 方式2: 按 MacCMS 标准播放列表容器解析
@@ -697,8 +527,8 @@ public class Meiyuacc extends Spider {
         );
 
         if (!playlistContainers.isEmpty()) {
-            StringBuilder playFrom = new StringBuilder();
-            StringBuilder playUrl = new StringBuilder();
+            StringBuilder fromSb = new StringBuilder();
+            StringBuilder urlSb = new StringBuilder();
             boolean first = true;
 
             for (Element container : playlistContainers) {
@@ -719,12 +549,12 @@ public class Meiyuacc extends Spider {
                 if (episodes.isEmpty()) continue;
 
                 if (!first) {
-                    playFrom.append("$$$");
-                    playUrl.append("$$$");
+                    fromSb.append("$$$");
+                    urlSb.append("$$$");
                 }
                 first = false;
 
-                playFrom.append(routeName);
+                fromSb.append(routeName);
 
                 StringBuilder epList = new StringBuilder();
                 for (int i = 0; i < episodes.size(); i++) {
@@ -737,17 +567,17 @@ public class Meiyuacc extends Spider {
                     if (i > 0) epList.append("#");
                     epList.append(epName).append("$").append(epUrl);
                 }
-                playUrl.append(epList);
+                urlSb.append(epList);
             }
 
-            if (playFrom.length() > 0) {
-                vod.put("vod_play_from", playFrom.toString());
-                vod.put("vod_play_url", playUrl.toString());
+            if (fromSb.length() > 0) {
+                playFrom = fromSb.toString();
+                playUrl = urlSb.toString();
             }
         }
 
         // 方式3: 如果以上都失败, 尝试查找所有 a[href*=/p/] 链接
-        if (!vod.has("vod_play_from")) {
+        if (playFrom.isEmpty()) {
             Elements allPlayLinks = doc.select("a[href*=/p/" + vodId + "-]");
             if (!allPlayLinks.isEmpty()) {
                 StringBuilder epList = new StringBuilder();
@@ -759,10 +589,12 @@ public class Meiyuacc extends Spider {
                     if (i > 0) epList.append("#");
                     epList.append(epName).append("$").append(epUrl);
                 }
-                vod.put("vod_play_from", "默认线路");
-                vod.put("vod_play_url", epList.toString());
+                playFrom = "默认线路";
+                playUrl = epList.toString();
             }
         }
+
+        return new String[]{playFrom, playUrl};
     }
 
     /**
@@ -789,23 +621,29 @@ public class Meiyuacc extends Spider {
             return matcher.group(1);
         }
 
-        // 匹配 JSON 格式更复杂的版本 (到第一个 }; 或 };)
-        pattern = Pattern.compile(
-                "var\\s+" + varName + "\\s*=\\s*(\\{.*?\\})\\s*[;<]",
-                Pattern.DOTALL
-        );
-        matcher = pattern.matcher(html);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-
         return null;
     }
 
     /**
+     * 从 JSON 字符串中简单提取指定 key 的值
+     */
+    private String extractJsonValue(String json, String key) {
+        Pattern p = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
+        Matcher m = p.matcher(json);
+        if (m.find()) {
+            return m.group(1);
+        }
+        // 尝试数字格式
+        p = Pattern.compile("\"" + key + "\"\\s*:\\s*(\\d+)");
+        m = p.matcher(json);
+        if (m.find()) {
+            return m.group(1);
+        }
+        return "";
+    }
+
+    /**
      * 根据 encrypt 字段解码视频URL
-     * @param url 原始URL
-     * @param encrypt 0=明文 1=URL编码 2=Base64编码
      */
     private String decodeVideoUrl(String url, int encrypt) {
         if (url == null || url.isEmpty()) return "";
@@ -831,7 +669,6 @@ public class Meiyuacc extends Spider {
      * 从HTML中直接提取视频URL
      */
     private String extractDirectVideoUrl(String html) {
-        // 查找 m3u8 URL
         Pattern m3u8Pattern = Pattern.compile(
                 "https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*",
                 Pattern.CASE_INSENSITIVE
@@ -839,20 +676,11 @@ public class Meiyuacc extends Spider {
         Matcher m = m3u8Pattern.matcher(html);
         if (m.find()) return m.group();
 
-        // 查找 mp4 URL
         Pattern mp4Pattern = Pattern.compile(
                 "https?://[^\"'\\s]+\\.mp4[^\"'\\s]*",
                 Pattern.CASE_INSENSITIVE
         );
         m = mp4Pattern.matcher(html);
-        if (m.find()) return m.group();
-
-        // 查找 flv URL
-        Pattern flvPattern = Pattern.compile(
-                "https?://[^\"'\\s]+\\.flv[^\"'\\s]*",
-                Pattern.CASE_INSENSITIVE
-        );
-        m = flvPattern.matcher(html);
         if (m.find()) return m.group();
 
         return "";
@@ -870,16 +698,6 @@ public class Meiyuacc extends Spider {
     }
 
     /**
-     * 获取播放请求头
-     */
-    private String getPlayHeaders() {
-        JSONObject headers = new JSONObject();
-        headers.put("User-Agent", UA);
-        headers.put("Referer", SITE_URL);
-        return headers.toString();
-    }
-
-    /**
      * 提取图片URL (支持懒加载属性)
      */
     private String extractImg(Element parent, String cssQuery) {
@@ -889,7 +707,6 @@ public class Meiyuacc extends Spider {
         if (src.isEmpty()) src = img.attr("data-original");
         if (src.isEmpty()) src = img.attr("data-lazy-src");
         if (src.isEmpty()) src = img.attr("src");
-        // 处理相对路径
         if (src.startsWith("//")) {
             src = "https:" + src;
         } else if (src.startsWith("/")) {
@@ -907,7 +724,7 @@ public class Meiyuacc extends Spider {
     }
 
     /**
-     * 根据标签名提取信息 (如 "类型：动作片")
+     * 根据标签名提取信息
      */
     private String extractByLabel(Document doc, String label) {
         // 方式1: 查找包含标签名的元素
@@ -976,6 +793,7 @@ public class Meiyuacc extends Spider {
      */
     private int parseInt(String str, int defaultValue) {
         try {
+            if (str == null || str.isEmpty()) return defaultValue;
             return Integer.parseInt(str.trim());
         } catch (Exception e) {
             return defaultValue;
@@ -983,15 +801,37 @@ public class Meiyuacc extends Spider {
     }
 
     /**
+     * JSON 字符串转义
+     */
+    private String escapeJson(String str) {
+        if (str == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * 生成错误的分页返回结果
      */
     private String errorPageResult(String pg) {
-        JSONObject result = new JSONObject();
-        result.put("page", parseInt(pg, 1));
-        result.put("pagecount", 1);
-        result.put("limit", 12);
-        result.put("total", 0);
-        result.put("list", new JSONArray());
-        return result.toString();
+        int page = parseInt(pg, 1);
+        return "{\"page\":" + page + ",\"pagecount\":1,\"limit\":12,\"total\":0,\"list\":[]}";
     }
 }
