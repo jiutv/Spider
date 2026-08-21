@@ -193,27 +193,31 @@ public class Meiyuacc extends Spider {
      * 获取分类内容列表
      * @param tid    分类ID
      * @param pg     页码 (字符串)
-     * @param filter 筛选条件 (JSONObject)
-     * @param extend 是否扩展
+     * @param filter 筛选条件 (JSON字符串)
+     * @param extend 扩展参数 (字符串)
      */
     @Override
-    public String categoryContent(String tid, String pg, JSONObject filter, boolean extend) {
+    public String categoryContent(String tid, String pg, String filter, String extend) {
         try {
             int page = parseInt(pg, 1);
 
-            // 解析筛选条件
+            // 解析筛选条件 JSON
             String classFilter = "";
             String areaFilter = "";
             String langFilter = "";
             String yearFilter = "";
             String byFilter = "";
 
-            if (filter != null) {
-                classFilter = filter.optString("class", "");
-                areaFilter = filter.optString("area", "");
-                langFilter = filter.optString("lang", "");
-                yearFilter = filter.optString("year", "");
-                byFilter = filter.optString("by", "");
+            if (filter != null && !filter.isEmpty()) {
+                try {
+                    JSONObject filterObj = new JSONObject(filter);
+                    classFilter = filterObj.optString("class", "");
+                    areaFilter = filterObj.optString("area", "");
+                    langFilter = filterObj.optString("lang", "");
+                    yearFilter = filterObj.optString("year", "");
+                    byFilter = filterObj.optString("by", "");
+                } catch (Exception ignored) {
+                }
             }
 
             // MacCMS URL格式: /vodshow/{type_id}-{class}-{area}-{lang}-{year}-{by}-{letter}-{page}---.html
