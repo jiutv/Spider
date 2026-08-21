@@ -67,7 +67,6 @@ public class Meiyuacc extends Spider {
             filters.put("26", getFilterArray("26"));
             result.put("filters", filters);
         }
-
         // 首页推荐列表 (爬取电影分类第一页)
         try {
             JSONArray list = fetchVideoList(SITE_URL + "/vodshow/1--------1---.html");
@@ -82,12 +81,11 @@ public class Meiyuacc extends Spider {
     // ======================== 筛选条件 ========================
 
     /**
-     * 返回分类筛选条件
+     * 返回分类筛选条件 (辅助方法，筛选数据同时在 homeContent 中返回)
      * @param tid 分类ID
      */
-    @Override
-    public String getFilter(String tid) {
-        return getFilterArray(tid).toString();
+    private JSONArray getFilter(String tid) {
+        return getFilterArray(tid);
     }
 
     /**
@@ -195,31 +193,27 @@ public class Meiyuacc extends Spider {
      * 获取分类内容列表
      * @param tid    分类ID
      * @param pg     页码 (字符串)
-     * @param filter 筛选条件 (JSON 字符串)
+     * @param filter 筛选条件 (JSONObject)
      * @param extend 是否扩展
      */
     @Override
-    public String categoryContent(String tid, String pg, String filter, boolean extend) {
+    public String categoryContent(String tid, String pg, JSONObject filter, boolean extend) {
         try {
             int page = parseInt(pg, 1);
 
-            // 解析筛选条件 JSON
+            // 解析筛选条件
             String classFilter = "";
             String areaFilter = "";
             String langFilter = "";
             String yearFilter = "";
             String byFilter = "";
 
-            if (filter != null && !filter.isEmpty()) {
-                try {
-                    JSONObject filterObj = new JSONObject(filter);
-                    classFilter = filterObj.optString("class", "");
-                    areaFilter = filterObj.optString("area", "");
-                    langFilter = filterObj.optString("lang", "");
-                    yearFilter = filterObj.optString("year", "");
-                    byFilter = filterObj.optString("by", "");
-                } catch (Exception ignored) {
-                }
+            if (filter != null) {
+                classFilter = filter.optString("class", "");
+                areaFilter = filter.optString("area", "");
+                langFilter = filter.optString("lang", "");
+                yearFilter = filter.optString("year", "");
+                byFilter = filter.optString("by", "");
             }
 
             // MacCMS URL格式: /vodshow/{type_id}-{class}-{area}-{lang}-{year}-{by}-{letter}-{page}---.html
