@@ -295,7 +295,7 @@ public class Djuu extends Spider {
             return Result.error(ERR_NO_PLAY);
         }
 
-        Vod vod = new Vod(id);
+        Vod vod = new Vod(id, "", "");
         if (!name.isEmpty()) {
             vod.setVodName(name);
         }
