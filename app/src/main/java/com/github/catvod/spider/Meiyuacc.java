@@ -1,7 +1,6 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
-import com.github.catvod.bean.Class;
 import com.github.catvod.crawler.Spider;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -49,19 +48,20 @@ public class Meiyuacc extends Spider {
 
     @Override
     public String homeContent(boolean filter) {
-        // 分类列表 (用 List<Class> 转 JSON 格式返回)
-        List<Class> classes = new ArrayList<>();
-        classes.add(new Class("1", "电影"));
-        classes.add(new Class("2", "电视剧"));
-        classes.add(new Class("3", "综艺"));
-        classes.add(new Class("4", "动漫"));
-        classes.add(new Class("26", "短剧"));
+        // 分类列表 (直接拼接JSON，不依赖 Class 类的 getter)
+        String[][] categories = {
+            {"1", "电影"},
+            {"2", "电视剧"},
+            {"3", "综艺"},
+            {"4", "动漫"},
+            {"26", "短剧"}
+        };
 
         StringBuilder classJson = new StringBuilder("[");
-        for (int i = 0; i < classes.size(); i++) {
+        for (int i = 0; i < categories.length; i++) {
             if (i > 0) classJson.append(",");
-            classJson.append("{\"type_id\":\"").append(classes.get(i).getTypeId()).append("\"")
-                    .append(",\"type_name\":\"").append(classes.get(i).getTypeName()).append("\"}");
+            classJson.append("{\"type_id\":\"").append(categories[i][0]).append("\"")
+                    .append(",\"type_name\":\"").append(categories[i][1]).append("\"}");
         }
         classJson.append("]");
 
