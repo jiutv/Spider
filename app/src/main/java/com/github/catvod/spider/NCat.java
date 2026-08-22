@@ -23,18 +23,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 网飞猫 / 可可影视 最终修复版 (2026-08-22)
+ * 网飞猫 / 可可影视 修复版 v2 (2026-08-22)
  * 
- * 播放流程：
- * 1. ncat.it.com 详情页 → 提取 wzzy-xxx.html 播放页
- * 2. wzzy-xxx.html → 提取多线路（data-origin）和 /movie/VID-EID.html?origin=线路 链接
- * 3. /movie/VID-EID.html?origin=线路 → 提取 m3u8 直链
+ * 修复：
+ * 1. 超级线路/王者TV蓝光 播放失败（增加 Referer Header）
+ * 2. 首页推荐影片播放失败（统一播放页解析逻辑）
  */
 public class NCat extends Spider {
 
     private static final String siteUrl = "https://ncat.it.com";
     private static final String playSite = "https://dyrsvip.cc";
-    private static final String picUrl = "https://ncat.it.com/img/id/";
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -44,17 +42,18 @@ public class NCat extends Spider {
         return headers;
     }
 
+    /**
+     * 播放请求头 - 关键！CDN 需要正确的 Referer
+     */
     private HashMap<String, String> getPlayHeaders() {
         HashMap<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
         headers.put("Referer", playSite + "/");
-        headers.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        headers.put("Origin", playSite);
+        headers.put("Accept", "*/*");
         return headers;
     }
 
-    /**
-     * 从 HTML 提取 JSON-LD 视频列表
-     */
     private List<Vod> parseJsonLd(String html) {
         List<Vod> list = new ArrayList<>();
         try {
@@ -107,9 +106,6 @@ public class NCat extends Spider {
         return list;
     }
 
-    /**
-     * 回退：HTML a 标签解析
-     */
     private List<Vod> parseHtmlList(String html) {
         List<Vod> list = new ArrayList<>();
         Document doc = Jsoup.parse(html);
@@ -207,67 +203,91 @@ public class NCat extends Spider {
             }
         }
 
-        // 构造播放页 URL
-        String playId = vodId.replace("ncat-", "wzzy-");
-        String playUrl = playSite + "/" + playId + ".html";
-
-        // 解析播放页，提取多线路
+        // 统一播放页解析（首页推荐和分类/搜索共用）
         String playFrom = "网飞猫";
-        String playUrlStr = "立即播放$" + playUrl;
+        String playUrlStr = "";
 
         try {
+            // 构造 wzzy 播放页 URL
+            String playId = vodId.replace("ncat-", "wzzy-");
+            String playUrl = playSite + "/" + playId + ".html";
             String playHtml = OkHttp.string(playUrl, getPlayHeaders());
-            
-            // 提取所有线路（data-origin）和对应的 /movie/ 链接
-            LinkedHashMap<String, String> lines = new LinkedHashMap<>();
-            
-            // 方法1：从 data-origin 提取
-            Pattern originPattern = Pattern.compile("data-origin=\"([^\"]+)\"");
-            Matcher originMatcher = originPattern.matcher(playHtml);
-            
-            // 同时提取 /movie/VID-EID.html?origin=LINE 链接
-            Pattern moviePattern = Pattern.compile("href=\"(/movie/[^\"]+\\?origin=[^\"]+)\"");
-            Matcher movieMatcher = moviePattern.matcher(playHtml);
-            
-            List<String> origins = new ArrayList<>();
-            while (originMatcher.find()) {
-                origins.add(originMatcher.group(1));
+
+            // 用 Jsoup 解析 DOM，确保线路和 URL 正确匹配
+            Document playDoc = Jsoup.parse(playHtml);
+
+            // 查找所有线路标签（data-origin）
+            Elements sourceTabs = playDoc.select("[data-origin]");
+            // 查找所有 /movie/ 链接
+            Elements movieLinks = playDoc.select("a[href*=/movie/]");
+
+            LinkedHashMap<String, String> lineMap = new LinkedHashMap<>();
+
+            // 方法1：从 data-origin 元素提取线路名，从 href 提取链接
+            for (Element tab : sourceTabs) {
+                String origin = tab.attr("data-origin");
+                String tabText = tab.text().trim();
+
+                // 跳过无效线路
+                if (origin.isEmpty()) continue;
+                if (tabText.isEmpty()) tabText = origin;
+
+                // 在 movieLinks 里找匹配的 origin
+                for (Element link : movieLinks) {
+                    String href = link.attr("href");
+                    if (href.contains("origin=" + origin)) {
+                        String fullUrl = href.startsWith("http") ? href : playSite + href;
+                        lineMap.put(tabText, fullUrl);
+                        break;
+                    }
+                }
             }
-            
-            List<String> movies = new ArrayList<>();
-            while (movieMatcher.find()) {
-                movies.add(movieMatcher.group(1));
+
+            // 方法2：如果没匹配到，直接用 href 里的 origin 参数
+            if (lineMap.isEmpty()) {
+                for (Element link : movieLinks) {
+                    String href = link.attr("href");
+                    String text = link.text().trim();
+                    if (href.contains("origin=") && !text.isEmpty()) {
+                        String origin = href.replaceAll(".*origin=([^&]+).*", "$1");
+                        String fullUrl = href.startsWith("http") ? href : playSite + href;
+                        lineMap.put(origin, fullUrl);
+                    }
+                }
             }
-            
-            // 匹配线路和链接
-            if (!origins.isEmpty() && !movies.isEmpty()) {
+
+            // 构建 PlayFrom 和 PlayUrl
+            if (!lineMap.isEmpty()) {
                 StringBuilder fromSb = new StringBuilder();
                 StringBuilder urlSb = new StringBuilder();
-                
-                for (int i = 0; i < origins.size() && i < movies.size(); i++) {
-                    String lineName = origins.get(i);
-                    String lineUrl = playSite + movies.get(i);
-                    
+
+                for (String lineName : lineMap.keySet()) {
+                    String lineUrl = lineMap.get(lineName);
+
                     if (fromSb.length() > 0) fromSb.append("$$$");
                     fromSb.append(lineName);
-                    
+
                     if (urlSb.length() > 0) urlSb.append("$$$");
                     urlSb.append("立即播放$").append(lineUrl);
                 }
-                
-                if (fromSb.length() > 0) {
-                    playFrom = fromSb.toString();
-                    playUrlStr = urlSb.toString();
-                }
+
+                playFrom = fromSb.toString();
+                playUrlStr = urlSb.toString();
             }
 
         } catch (Exception e) {
-            // 播放页解析失败，使用默认
+            // 解析失败时使用默认
+        }
+
+        // 保底：如果上面都没解析到，至少给一个默认播放 URL
+        if (playUrlStr.isEmpty()) {
+            String playId = vodId.replace("ncat-", "wzzy-");
+            playUrlStr = "立即播放$" + playSite + "/" + playId + ".html";
         }
 
         Vod vod = new Vod();
         vod.setVodId(vodId);
-        vod.setVodPic(pic.startsWith("http") ? pic : picUrl + pic);
+        vod.setVodPic(pic.startsWith("http") ? pic : "");
         vod.setVodYear(year);
         vod.setVodName(name);
         vod.setVodContent(desc);
@@ -291,7 +311,6 @@ public class NCat extends Spider {
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         // id 格式：https://dyrsvip.cc/movie/VID-EID.html?origin=线路
-        
         String playPageUrl;
         if (id.startsWith("http")) {
             playPageUrl = id;
@@ -301,17 +320,18 @@ public class NCat extends Spider {
 
         // 访问播放线路页，提取 m3u8 直链
         String html = OkHttp.string(playPageUrl, getPlayHeaders());
-        
+
         // 提取 m3u8 直链
         Pattern m3u8Pattern = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8[^\\s\"'<>]*)");
         Matcher m3u8Matcher = m3u8Pattern.matcher(html);
-        
+
         if (m3u8Matcher.find()) {
             String m3u8Url = m3u8Matcher.group(1);
+            // 关键：返回时带上正确的 Referer，否则 CDN 会 403
             return Result.get().url(m3u8Url).header(getPlayHeaders()).string();
         }
-        
-        // 如果找不到 m3u8，返回原始 URL（让播放器试试）
+
+        // 如果找不到 m3u8，返回原始 URL
         return Result.get().url(playPageUrl).header(getPlayHeaders()).string();
     }
 }
