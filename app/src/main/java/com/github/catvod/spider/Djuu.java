@@ -1,12 +1,14 @@
 package com.github.catvod.spider;
 
 import android.text.TextUtils;
+
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
-import com.github.catvod.jnet.OkHttp;
-import com.github.catvod.jnet.OkResult;
+import com.github.catvod.net.OkHttp;
+import com.github.catvod.net.OkResult;
+
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -18,9 +20,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Djuu 爬虫 - 还原版
+ * Djuu 爬虫 - 适配 lushunming/AndroidCatVodSpider
  * 原站点: https://m.djuu.com (DJ呦呦网)
  * 功能: DJ 音乐资源爬取
  */
@@ -85,6 +89,9 @@ public class Djuu extends Spider {
     private static final String ERR_DETAIL_FAIL = "详情解析失败";
     private static final String ERR_NO_PLAY = "文件夹为空";
 
+    /** 正则: 提取单引号内的内容 */
+    private static final Pattern PATTERN_QUOTE = Pattern.compile("'(.*?)'");
+
     // ========== 静态缓存 ==========
 
     /** 分类页抓取的播放列表，供详情页使用 */
@@ -116,13 +123,28 @@ public class Djuu extends Spider {
         return BASE_URL.concat(pic);
     }
 
+    /**
+     * 从 onclick 属性中提取单引号包裹的内容
+     * 例如: onclick="openPage('1_1.html')" -> "1_1.html"
+     */
+    private String extractQuotedValue(String onclick) {
+        if (onclick == null || onclick.isEmpty()) {
+            return "";
+        }
+        Matcher matcher = PATTERN_QUOTE.matcher(onclick);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
+    }
+
     // ========== Spider 接口实现 ==========
 
     /**
      * 首页内容
      */
     @Override
-    public String homeContent(boolean filter) {
+    public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
         classes.add(new Class(TYPE_DJLIST, "曲库", PAGE_1));
         return Result.string(classes, new ArrayList<>());
@@ -137,7 +159,7 @@ public class Djuu extends Spider {
      * @param extend 扩展参数
      */
     @Override
-    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
+    public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         Result result;
         boolean isDjlist = TYPE_DJLIST.equals(tid);
         ArrayList<String> cache = playListCache;
@@ -193,8 +215,10 @@ public class Djuu extends Spider {
                 // 解析 onclick 属性获取ID
                 // 格式: onclick="...('1_1.html')..."
                 String onclick = nameEl.attr(SEL_ONCLICK);
-                String id = onclick.split("\\('")[1].split("'\)")[0]
-                        .replace("1_1.html", "1_{pg}.html");
+                String id = extractQuotedValue(onclick);
+                if (id.isEmpty()) continue;
+
+                id = id.replace("1_1.html", "1_{pg}.html");
 
                 String name = nameEl.text();
                 String pic = fixPic(item.select(SEL_IMG).attr(SEL_SRC));
@@ -218,7 +242,7 @@ public class Djuu extends Spider {
      * @param ids 视频ID列表
      */
     @Override
-    public String detailContent(List<String> ids) {
+    public String detailContent(List<String> ids) throws Exception {
         String id = ids.get(0);
         boolean hasSep = id.contains(SEP_ID);
 
@@ -290,7 +314,7 @@ public class Djuu extends Spider {
      * @param vipFlags VIP标识列表
      */
     @Override
-    public String playerContent(String flag, String id, List<String> vipFlags) {
+    public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         // 构建 POST 参数: id=xxx
         Map<String, String> params = new HashMap<>();
         params.put("id", id);
@@ -323,39 +347,35 @@ public class Djuu extends Spider {
      * @param pg    页码
      */
     @Override
-    public String searchContent(String key, boolean quick, String pg) {
+    public String searchContent(String key, boolean quick, String pg) throws Exception {
         playListCache.clear();
 
-        try {
-            // URL 编码搜索词
-            String encodedKey = URLEncoder.encode(key, "UTF-8");
-            StringBuilder urlBuilder = new StringBuilder(BASE_URL + PATH_SEARCH + encodedKey);
+        // URL 编码搜索词
+        String encodedKey = URLEncoder.encode(key, "UTF-8");
+        StringBuilder urlBuilder = new StringBuilder(BASE_URL + PATH_SEARCH + encodedKey);
 
-            // 如果不是第一页，追加页码参数
-            if (!PAGE_1.equals(pg)) {
-                urlBuilder.append(PARAM_PAGE).append(pg);
-            }
-
-            String url = urlBuilder.toString();
-            String html = OkHttp.string(url, null, getHeaders());
-            Document doc = Jsoup.parse(html);
-
-            ArrayList<Vod> list = new ArrayList<>();
-            Elements items = doc.select(SEL_SEARCH_ITEM);
-
-            for (Element item : items) {
-                String name = item.select(SEL_NAME).text();
-                String vid = item.attr(SEL_DATA_ID);
-                String pic = fixPic(DEFAULT_PIC);
-
-                // vod_id 格式: id$$$name$$$pic$$$
-                String vodId = vid + SEP_ID + name + SEP_ID + pic + SEP_ID;
-                list.add(new Vod(vodId, name, pic));
-            }
-
-            return Result.string(list);
-        } catch (Exception e) {
-            return Result.string(new ArrayList<>());
+        // 如果不是第一页，追加页码参数
+        if (!PAGE_1.equals(pg)) {
+            urlBuilder.append(PARAM_PAGE).append(pg);
         }
+
+        String url = urlBuilder.toString();
+        String html = OkHttp.string(url, null, getHeaders());
+        Document doc = Jsoup.parse(html);
+
+        ArrayList<Vod> list = new ArrayList<>();
+        Elements items = doc.select(SEL_SEARCH_ITEM);
+
+        for (Element item : items) {
+            String name = item.select(SEL_NAME).text();
+            String vid = item.attr(SEL_DATA_ID);
+            String pic = fixPic(DEFAULT_PIC);
+
+            // vod_id 格式: id$$$name$$$pic$$$
+            String vodId = vid + SEP_ID + name + SEP_ID + pic + SEP_ID;
+            list.add(new Vod(vodId, name, pic));
+        }
+
+        return Result.string(list);
     }
 }
