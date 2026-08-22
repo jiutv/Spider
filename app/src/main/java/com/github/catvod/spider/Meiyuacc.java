@@ -83,12 +83,24 @@ public class Meiyuacc extends Spider {
     // ======================== 筛选 ========================
 
     private String buildFiltersJson() {
+        // 从源码确认的实际筛选选项
+        // 无 class 筛选 — 类型通过切换 tid 实现 (如动作片 tid=6, 喜剧片 tid=7)
+        String[][] areaOpts = {{"全部",""},{"大陆","大陆"},{"香港","香港"},{"台湾","台湾"},{"美国","美国"},{"法国","法国"},{"英国","英国"},{"日本","日本"},{"韩国","韩国"},{"德国","德国"},{"泰国","泰国"},{"印度","印度"},{"其他","其他"}};
+        String[][] langOpts = {{"全部",""},{"国语","国语"},{"英语","英语"},{"粤语","粤语"},{"韩语","韩语"},{"日语","日语"},{"法语","法语"},{"德语","德语"},{"其它","其它"}};
+        String[][] byOpts = {{"时间","time"},{"人气","hits"},{"评分","score"}};
+        String[][] yearFull = {{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"2023","2023"},{"2022","2022"},{"2021","2021"},{"2020","2020"},{"2019","2019"},{"2018","2018"},{"2017","2017"},{"2016","2016"},{"2015","2015"},{"更早","更早"}};
+
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"1\":[").append(filterItem("class","类型",new String[][]{{"全部",""},{"动作片","动作片"},{"喜剧片","喜剧片"},{"爱情片","爱情片"},{"科幻片","科幻片"},{"恐怖片","恐怖片"},{"剧情片","剧情片"},{"战争片","战争片"},{"纪录片","纪录片"}})).append(",").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"},{"香港","香港"},{"台湾","台湾"},{"美国","美国"},{"日本","日本"},{"韩国","韩国"},{"法国","法国"},{"英国","英国"},{"德国","德国"},{"泰国","泰国"},{"印度","印度"},{"其他","其他"}})).append(",").append(filterItem("year","年份",new String[][]{{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"2023","2023"},{"2022","2022"},{"2021","2021"},{"2020","2020"},{"2019","2019"},{"更早","更早"}})).append(",").append(filterItem("by","排序",new String[][]{{"时间","time"},{"人气","hits"},{"评分","score"}})).append("]");
-        sb.append(",\"2\":[").append(filterItem("class","类型",new String[][]{{"全部",""},{"国产剧","国产剧"},{"港剧","港剧"},{"美剧","美剧"},{"韩剧","韩剧"},{"日剧","日剧"},{"泰剧","泰剧"}})).append(",").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"},{"香港","香港"},{"台湾","台湾"},{"美国","美国"},{"日本","日本"},{"韩国","韩国"},{"英国","英国"},{"泰国","泰国"}})).append(",").append(filterItem("year","年份",new String[][]{{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"2023","2023"},{"2022","2022"},{"2021","2021"},{"更早","更早"}})).append(",").append(filterItem("by","排序",new String[][]{{"时间","time"},{"人气","hits"},{"评分","score"}})).append("]");
-        sb.append(",\"3\":[").append(filterItem("class","类型",new String[][]{{"全部",""}})).append(",").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"},{"香港","香港"},{"台湾","台湾"},{"日本","日本"},{"韩国","韩国"},{"美国","美国"}})).append(",").append(filterItem("year","年份",new String[][]{{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"2023","2023"},{"更早","更早"}})).append(",").append(filterItem("by","排序",new String[][]{{"时间","time"},{"人气","hits"},{"评分","score"}})).append("]");
-        sb.append(",\"4\":[").append(filterItem("class","类型",new String[][]{{"全部",""}})).append(",").append(filterItem("area","地区",new String[][]{{"全部",""},{"日本","日本"},{"大陆","大陆"},{"美国","美国"}})).append(",").append(filterItem("year","年份",new String[][]{{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"2023","2023"},{"更早","更早"}})).append(",").append(filterItem("by","排序",new String[][]{{"时间","time"},{"人气","hits"},{"评分","score"}})).append("]");
-        sb.append(",\"26\":[").append(filterItem("class","类型",new String[][]{{"全部",""}})).append(",").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"}})).append(",").append(filterItem("year","年份",new String[][]{{"全部",""},{"2026","2026"},{"2025","2025"},{"2024","2024"},{"更早","更早"}})).append(",").append(filterItem("by","排序",new String[][]{{"时间","time"},{"人气","hits"},{"评分","score"}})).append("]");
+        // 电影 tid=1
+        sb.append("\"1\":[").append(filterItem("area","地区",areaOpts)).append(",").append(filterItem("lang","语言",langOpts)).append(",").append(filterItem("year","年份",yearFull)).append(",").append(filterItem("by","排序",byOpts)).append("]");
+        // 电视剧 tid=2
+        sb.append(",\"2\":[").append(filterItem("area","地区",areaOpts)).append(",").append(filterItem("lang","语言",langOpts)).append(",").append(filterItem("year","年份",yearFull)).append(",").append(filterItem("by","排序",byOpts)).append("]");
+        // 综艺 tid=3
+        sb.append(",\"3\":[").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"},{"香港","香港"},{"台湾","台湾"},{"日本","日本"},{"韩国","韩国"},{"美国","美国"}})).append(",").append(filterItem("lang","语言",langOpts)).append(",").append(filterItem("year","年份",yearFull)).append(",").append(filterItem("by","排序",byOpts)).append("]");
+        // 动漫 tid=4
+        sb.append(",\"4\":[").append(filterItem("area","地区",new String[][]{{"全部",""},{"日本","日本"},{"大陆","大陆"},{"美国","美国"}})).append(",").append(filterItem("lang","语言",langOpts)).append(",").append(filterItem("year","年份",yearFull)).append(",").append(filterItem("by","排序",byOpts)).append("]");
+        // 短剧 tid=26
+        sb.append(",\"26\":[").append(filterItem("area","地区",new String[][]{{"全部",""},{"大陆","大陆"}})).append(",").append(filterItem("lang","语言",langOpts)).append(",").append(filterItem("year","年份",yearFull)).append(",").append(filterItem("by","排序",byOpts)).append("]");
         sb.append("}");
         return sb.toString();
     }
@@ -110,27 +122,30 @@ public class Meiyuacc extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         try {
             int page = parseInt(pg, 1);
-            String cf = "", af = "", lf = "", yf = "", bf = "";
+            String af = "", lf = "", yf = "", bf = "";
             if (extend != null) {
-                cf = extend.getOrDefault("class", "");
                 af = extend.getOrDefault("area", "");
                 lf = extend.getOrDefault("lang", "");
                 yf = extend.getOrDefault("year", "");
                 bf = extend.getOrDefault("by", "");
             }
-            // URL格式: /vodshow/{tid}-{class}-{area}-{lang}-{year}-{by}------{page}---.html
-            // 空筛选时: /vodshow/1--------1---.html (8个横杠在page前, 3个在后)
+            // 实际URL格式(从源码确认):
+            // /vodshow/{tid}-{area}-{by}-{空}-{lang}-{空}-{空}-{空}-{page}-{空}-{空}-{year}.html
+            // 无筛选时: /vodshow/1--------1---.html (8横杠+page+3横杠)
+            // 有筛选时: /vodshow/6-大陆-hits--国语------2---2021.html
             String url = SITE_URL + "/vodshow/" + tid
-                    + "-" + cf    // class
-                    + "-" + af    // area
-                    + "-" + lf    // lang
-                    + "-" + yf    // year
-                    + "-" + bf    // by
-                    + "-" + ""    // letter
-                    + "-" + ""    // extra1
-                    + "-" + ""    // extra2
-                    + "-" + page  // page
-                    + "---.html"; // trailing 3 empty fields
+                    + "-" + af    // field 2: area
+                    + "-" + bf    // field 3: by(排序)
+                    + "-" + ""    // field 4: 空
+                    + "-" + lf    // field 5: lang
+                    + "-" + ""    // field 6: 空
+                    + "-" + ""    // field 7: 空
+                    + "-" + ""    // field 8: 空
+                    + "-" + page  // field 9: page
+                    + "-" + ""    // field 10: 空
+                    + "-" + ""    // field 11: 空
+                    + "-" + yf   // field 12: year
+                    + ".html";
 
             Document doc = fetchDoc(url);
             String listJson = parseListPage(doc);
