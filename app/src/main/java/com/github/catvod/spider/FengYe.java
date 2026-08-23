@@ -69,9 +69,9 @@ public class FengYe extends Spider {
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
     private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
     private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
-    private static final Pattern PATTERN_URL = Pattern.compile("url\\s*:\\s*"(https?://[^"]+)"");
-    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te="(.*?)"");
-    private static final Pattern PATTERN_HREF = Pattern.compile("<a[^>]+href="(https?://[^"]+)"[^>]*>");
+    private static final Pattern PATTERN_URL = Pattern.compile("url\\s*:\\s*\"(https?://[^\"]+)\"");
+    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
+    private static final Pattern PATTERN_HREF = Pattern.compile("<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>");
 
     // ========== 工具方法 ==========
 
