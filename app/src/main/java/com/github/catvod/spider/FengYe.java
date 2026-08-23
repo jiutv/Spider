@@ -16,9 +16,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.io.IOException;
 
-import com.github.catvod.utils.CaptchaUtil;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,7 +26,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import okhttp3.Response;
 
 /**
  * FengYe 爬虫 - 适配 lushunming/AndroidCatVodSpider
@@ -145,8 +142,7 @@ public class FengYe extends Spider {
             if (!url.startsWith("http")) {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
-            OkResult result = OkHttp.get(url, getHeaders(siteUrl));
-            if (result != null) return result.getBody();
+            return OkHttp.string(url, null, getHeaders(siteUrl));
         } catch (Exception e) {}
         return "";
     }
@@ -170,12 +166,15 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 验证码 OCR 识别
-     * 支持：超级鹰 / 2captcha / 本地 Tesseract
-     * 配置方式：修改 CaptchaUtil.java 顶部的 API KEY
+     * 验证码 OCR 识别（占位，需接入打码平台）
+     * 原代码使用 C1364s2.m4652X2 进行图片转文本
+     * 如需使用，请接入超级鹰/2captcha等打码平台
      */
     private String captchaOCR(byte[] imgBytes) {
-        return CaptchaUtil.recognize(imgBytes);
+        // TODO: 接入验证码识别服务
+        // 超级鹰: http://www.chaojiying.com
+        // 2captcha: https://2captcha.com
+        return "";
     }
 
     /**
@@ -255,9 +254,9 @@ public class FengYe extends Spider {
         String[] urls = {url, url + "/cupfox-list/1--------1---.html"};
         for (String test : urls) {
             try {
-                OkResult result = OkHttp.get(test, getHeaders(url));
-                if (result != null && result.getResponse() != null) {
-                    int code = result.getResponse().code();
+                OkResult result = OkHttp.get(test, null, getHeaders(url));
+                if (result != null) {
+                    int code = result.getCode();
                     if (code >= 200 && code < 400) {
                         String body = result.getBody();
                         if (!TextUtils.isEmpty(body) && (body.contains("public-list-exp") || body.contains("影片"))) {
@@ -300,8 +299,7 @@ public class FengYe extends Spider {
         String testUrl = this.backupUrl;
         String defaultUrl = "https://www.cd-zj.com";
         try {
-            OkResult result = OkHttp.get(testUrl, getHeaders(defaultUrl));
-            String body = result != null ? result.getBody() : "";
+            String body = OkHttp.string(testUrl, null, getHeaders(defaultUrl));
             if (!TextUtils.isEmpty(body)) {
                 ArrayList<String> candidates = new ArrayList<>();
                 Matcher m = PATTERN_HREF.matcher(body);
