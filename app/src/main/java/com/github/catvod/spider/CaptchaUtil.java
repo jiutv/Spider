@@ -6,7 +6,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
 
-import com.rmtheis.tess.two.TessBaseAPI;
+import com.googlecode.tesseract.android.TessBaseAPI;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -14,23 +14,24 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * 本地 Tesseract OCR 验证码识别
- * 完全免费，无需联网
+ * 基于 Tesseract OCR 的验证码识别工具
+ * 仅识别数字，用于验证码破解
  *
- * 使用步骤：
- * 1. build.gradle 添加：implementation files('libs/tess-two-9.1.0.aar')
- * 2. 下载 eng.traineddata（约14MB）：
+ * 使用说明：
+ * 1. build.gradle 配置：implementation files('libs/tess-two-9.1.0.aar')
+ *    注意：AAR 中的包名为 com.googlecode.tesseract.android
+ * 2. 下载 eng.traineddata（约14MB）
  *    https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
- * 3. 放入：app/src/main/assets/tessdata/eng.traineddata
- * 4. 编译运行，首次启动自动复制训练文件
+ * 3. 放置：app/src/main/assets/tessdata/eng.traineddata
+ * 4. 混淆规则：-keep class com.googlecode.tesseract.android.** { *; }
  */
 class CaptchaUtil {
 
     private static boolean tessInitialized = false;
 
     /**
-     * 初始化：将 assets 中的训练数据复制到可读写目录
-     * 在 FengYe.init() 中调用一次即可
+     * 初始化：把 assets 里的训练数据文件复制到应用私有目录
+     * 跟 FenYun.init() 类似的思路
      */
     static void initTessData(Context context) {
         if (tessInitialized) return;
@@ -62,9 +63,9 @@ class CaptchaUtil {
 
     /**
      * 识别验证码
-     * @param imgBytes 验证码图片（PNG/JPG）
+     * @param imgBytes 验证码图片字节（PNG/JPG等）
      * @param context  Android Context
-     * @return 识别结果（4位数字），失败返回空字符串
+     * @return 识别结果（4位数字验证码），失败返回空字符串
      */
     static String recognize(byte[] imgBytes, Context context) {
         if (imgBytes == null || imgBytes.length == 0 || context == null) return "";
@@ -78,7 +79,7 @@ class CaptchaUtil {
                 return "";
             }
 
-            // 只识别数字（大大提高准确率）
+            // 只识别数字（提高验证码识别准确率）
             tess.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, "0123456789");
 
             Bitmap bitmap = preprocess(imgBytes);
@@ -101,7 +102,7 @@ class CaptchaUtil {
     }
 
     /**
-     * 图片预处理：灰度化 + 二值化 + 放大
+     * 图片预处理：灰度 + 二值化 + 放大
      */
     private static Bitmap preprocess(byte[] imgBytes) {
         try {
@@ -124,8 +125,8 @@ class CaptchaUtil {
                 for (int y = 0; y < newHeight; y++) {
                     int pixel = scaled.getPixel(x, y);
                     int gray = (int) (Color.red(pixel) * 0.299
-                                    + Color.green(pixel) * 0.587
-                                    + Color.blue(pixel) * 0.114);
+                            + Color.green(pixel) * 0.587
+                            + Color.blue(pixel) * 0.114);
                     int binary = gray < 160 ? 0 : 255;
                     out.setPixel(x, y, Color.rgb(binary, binary, binary));
                 }
@@ -136,3 +137,4 @@ class CaptchaUtil {
         }
     }
 }
+
