@@ -7,17 +7,26 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # ===== 修复：确保 tess-two aar 文件完整 =====
-      - name: Download tess-two aar
+      # ===== 修复：下载 aar 并安装到本地 Maven 仓库 =====
+      - name: Setup local Maven repository for tess-two
         run: |
-          curl -L -o app/libs/tess-two-9.1.0.aar             "https://github.com/jiutv/Spider/raw/multiThread/app/libs/tess-two-9.1.0.aar"
-          ls -lh app/libs/tess-two-9.1.0.aar
-          file app/libs/tess-two-9.1.0.aar
+          mkdir -p ~/.m2/repository/com/rmtheis/tess-two/9.1.0
+          curl -L -o ~/.m2/repository/com/rmtheis/tess-two/9.1.0/tess-two-9.1.0.aar             "https://github.com/jiutv/Spider/raw/multiThread/app/libs/tess-two-9.1.0.aar"
+          cat > ~/.m2/repository/com/rmtheis/tess-two/9.1.0/tess-two-9.1.0.pom << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.rmtheis</groupId>
+            <artifactId>tess-two</artifactId>
+            <version>9.1.0</version>
+            <packaging>aar</packaging>
+          </project>
+          EOF
+          ls -lh ~/.m2/repository/com/rmtheis/tess-two/9.1.0/
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
