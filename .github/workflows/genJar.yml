@@ -11,6 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # ===== 修复：确保 tess-two aar 文件完整 =====
+      - name: Download tess-two aar
+        run: |
+          curl -L -o app/libs/tess-two-9.1.0.aar             "https://github.com/jiutv/Spider/raw/multiThread/app/libs/tess-two-9.1.0.aar"
+          ls -lh app/libs/tess-two-9.1.0.aar
+          file app/libs/tess-two-9.1.0.aar
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
