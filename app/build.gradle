@@ -66,7 +66,7 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.12.0'
     testImplementation "org.robolectric:robolectric:4.13"
     testImplementation 'cn.hutool:hutool-all:5.8.26'
-    // ===== 修复：使用本地 AAR 文件，避免 Maven 仓库找不到的问题 =====
+    // ===== 修复：直接使用本地 AAR 文件，无需 Maven 仓库 =====
     implementation files("${projectDir}/libs/tess-two-9.1.0.aar")
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
 
