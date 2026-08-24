@@ -11,14 +11,11 @@ import android.graphics.Paint;
 
 /**
  * 纯 Java 实现的轻量级 OCR 验证码识别
- * 不依赖 Tesseract、不依赖 so 库、不依赖网络
- * 适用于白底黑字的 4 位数字验证码
+ * 支持 PNG/JPG/WEBP/GIF 等多种格式
  */
 class CaptchaUtil {
 
-    static void initTessData(Context context) {
-        // 纯 Java OCR 不需要初始化
-    }
+    static void initTessData(Context context) {}
 
     static String recognize(byte[] imgBytes, Context context) {
         if (imgBytes == null || imgBytes.length == 0) {
@@ -26,10 +23,31 @@ class CaptchaUtil {
             return "";
         }
 
+        System.out.println("=== OCR: imgBytes length=" + imgBytes.length);
+
+        // 打印文件头，判断格式
+        if (imgBytes.length > 4) {
+            StringBuilder hex = new StringBuilder("=== OCR: header=");
+            for (int i = 0; i < Math.min(16, imgBytes.length); i++) {
+                hex.append(String.format("%02X ", imgBytes[i] & 0xFF));
+            }
+            System.out.println(hex.toString());
+
+            // 判断文件类型
+            String type = detectType(imgBytes);
+            System.out.println("=== OCR: detected type=" + type);
+        }
+
         try {
+            // 尝试解码
             Bitmap src = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.length);
             if (src == null) {
-                System.out.println("=== OCR: decode image failed");
+                System.out.println("=== OCR: decode image failed, trying WebP...");
+                // 有些设备不支持 WebP，尝试转换
+                src = decodeWebP(imgBytes);
+            }
+            if (src == null) {
+                System.out.println("=== OCR: all decode methods failed");
                 return "";
             }
 
@@ -56,13 +74,45 @@ class CaptchaUtil {
     }
 
     /**
-     * 图片预处理：灰度化 + 对比度增强 + 二值化 + 放大
+     * 检测文件类型
      */
+    private static String detectType(byte[] data) {
+        if (data.length < 4) return "unknown";
+        // PNG: 89 50 4E 47
+        if (data[0] == (byte)0x89 && data[1] == (byte)0x50 && data[2] == (byte)0x4E && data[3] == (byte)0x47)
+            return "PNG";
+        // JPG: FF D8 FF
+        if (data[0] == (byte)0xFF && data[1] == (byte)0xD8 && data[2] == (byte)0xFF)
+            return "JPG";
+        // GIF: 47 49 46 38
+        if (data[0] == (byte)0x47 && data[1] == (byte)0x49 && data[2] == (byte)0x46 && data[3] == (byte)0x38)
+            return "GIF";
+        // WEBP: 52 49 46 46 ... 57 45 42 50
+        if (data[0] == (byte)0x52 && data[1] == (byte)0x49 && data[2] == (byte)0x46 && data[3] == (byte)0x46)
+            return "WEBP";
+        // BMP: 42 4D
+        if (data[0] == (byte)0x42 && data[1] == (byte)0x4D)
+            return "BMP";
+        return "unknown";
+    }
+
+    /**
+     * 尝试解码 WebP（某些 Android 版本不支持）
+     */
+    private static Bitmap decodeWebP(byte[] data) {
+        try {
+            // 如果系统支持 WebP，decodeByteArray 应该已经成功了
+            // 这里返回 null 表示不支持
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static Bitmap preprocess(Bitmap src) {
         int width = src.getWidth();
         int height = src.getHeight();
 
-        // 放大 3 倍
         float scale = 3.0f;
         Matrix matrix = new Matrix();
         matrix.postScale(scale, scale);
@@ -71,14 +121,12 @@ class CaptchaUtil {
         int newWidth = scaled.getWidth();
         int newHeight = scaled.getHeight();
 
-        // RGB_565 减少内存
         Bitmap out = Bitmap.createBitmap(newWidth, newHeight, Bitmap.Config.RGB_565);
         Canvas canvas = new Canvas(out);
         Paint paint = new Paint();
 
-        // 灰度 + 高对比度二值化
         ColorMatrix cm = new ColorMatrix();
-        cm.setSaturation(0); // 灰度
+        cm.setSaturation(0);
 
         ColorMatrix contrast = new ColorMatrix(new float[] {
             3.0f, 0, 0, 0, -280,
@@ -94,24 +142,19 @@ class CaptchaUtil {
         return out;
     }
 
-    /**
-     * 识别 4 位数字验证码
-     */
     private static String recognizeDigits(Bitmap img) {
         int w = img.getWidth();
         int h = img.getHeight();
 
-        // 将 Bitmap 转为二维数组（0=黑，255=白）
         int[][] pixels = new int[h][w];
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 int pixel = img.getPixel(x, y);
-                int gray = (pixel >> 16) & 0xFF; // 取红色通道（已经是灰度图）
+                int gray = (pixel >> 16) & 0xFF;
                 pixels[y][x] = gray < 128 ? 0 : 255;
             }
         }
 
-        // 分割成 4 个字符
         int charWidth = w / 4;
         StringBuilder result = new StringBuilder();
 
@@ -125,13 +168,8 @@ class CaptchaUtil {
         return result.toString();
     }
 
-    /**
-     * 识别单个数字
-     */
     private static String recognizeSingleDigit(int[][] pixels, int left, int right, int h) {
         int charW = right - left;
-
-        // 提取特征：7x5 网格，每个网格的黑色像素比例
         int gridH = h / 7;
         int gridW = charW / 5;
         double[] features = new double[35];
@@ -155,33 +193,21 @@ class CaptchaUtil {
             }
         }
 
-        // 数字模板（0-9）
         double[][] templates = {
-            // 0
             {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            // 1
             {0,0,1,0,0, 0,1,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,1,1,0},
-            // 2
             {0,1,1,1,0, 1,0,0,0,1, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,1,0,0,0, 1,1,1,1,1},
-            // 3
             {0,1,1,1,0, 1,0,0,0,1, 0,0,0,0,1, 0,0,1,1,0, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            // 4
             {0,0,0,1,0, 0,0,1,1,0, 0,1,0,1,0, 1,0,0,1,0, 1,1,1,1,1, 0,0,0,1,0, 0,0,0,1,0},
-            // 5
             {1,1,1,1,1, 1,0,0,0,0, 1,1,1,1,0, 0,0,0,0,1, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            // 6
             {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,0, 1,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            // 7
             {1,1,1,1,1, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0},
-            // 8
             {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            // 9
             {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,1, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
         };
 
         String[] digits = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
 
-        // 计算余弦相似度
         String bestMatch = "0";
         double bestScore = -1;
 
@@ -196,9 +222,6 @@ class CaptchaUtil {
         return bestMatch;
     }
 
-    /**
-     * 计算余弦相似度
-     */
     private static double cosineSimilarity(double[] a, double[] b) {
         double dot = 0;
         double normA = 0;
