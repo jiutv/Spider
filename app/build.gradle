@@ -50,6 +50,13 @@ android {
     }
 }
 
+// ===== 修复：添加 flatDir 仓库来解析本地 aar =====
+repositories {
+    flatDir {
+        dirs 'libs'
+    }
+}
+
 dependencies {
     implementation 'com.github.thegrizzlylabs:sardine-android:0.9'
     implementation 'wang.harlon.quickjs:wrapper-android:2.0.0'
@@ -67,7 +74,8 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.12.0'
     testImplementation "org.robolectric:robolectric:4.13"
     testImplementation 'cn.hutool:hutool-all:5.8.26'
-    implementation files("${projectDir}/libs/tess-two-9.1.0.aar")
+    // ===== 修复：改用 flatDir 方式引用本地 aar =====
+    implementation(name: 'tess-two-9.1.0', ext: 'aar')
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
 
     task buildCustomSpiderJar {
