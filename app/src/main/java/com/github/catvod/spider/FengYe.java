@@ -34,6 +34,8 @@ import java.util.regex.Pattern;
  */
 public class FengYe extends Spider {
 
+    private Context mContext;
+
     // ========== 站点配置 ==========
 
     /** 主站点地址 */
@@ -71,6 +73,24 @@ public class FengYe extends Spider {
     private static final Pattern PATTERN_HREF = Pattern.compile("<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>");
 
     // ========== 工具方法 ==========
+
+    /**
+     * 获取验证码图片字节数组
+     */
+    private byte[] fetchBytes(String url) {
+        try {
+            if (!url.startsWith("http")) {
+                url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
+            }
+            okhttp3.Response response = OkHttp.newCall(url, getHeaders(siteUrl));
+            if (response.body() != null) {
+                byte[] bytes = response.body().bytes();
+                response.close();
+                return bytes;
+            }
+        } catch (Exception e) {}
+        return null;
+    }
 
     /**
      * 处理图片地址
@@ -166,15 +186,12 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 验证码 OCR 识别（占位，需接入打码平台）
-     * 原代码使用 C1364s2.m4652X2 进行图片转文本
-     * 如需使用，请接入超级鹰/2captcha等打码平台
+     * 验证码 OCR 识别
+     * 支持：超级鹰 / 2captcha
+     * 配置方式：修改 CaptchaUtil.java 顶部的 API KEY
      */
     private String captchaOCR(byte[] imgBytes) {
-        // TODO: 接入验证码识别服务
-        // 超级鹰: http://www.chaojiying.com
-        // 2captcha: https://2captcha.com
-        return "";
+        return CaptchaUtil.recognize(imgBytes, mContext);
     }
 
     /**
@@ -273,6 +290,8 @@ public class FengYe extends Spider {
 
     @Override
     public void init(Context context, String extend) throws Exception {
+        this.mContext = context;
+        CaptchaUtil.initTessData(context);
         this.siteUrl = "https://www.cd-zj.com";
         this.backupUrl = "https://www.vip1949.com/";
 
