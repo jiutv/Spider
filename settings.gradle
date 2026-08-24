@@ -17,7 +17,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
 
         maven { url 'https://mirrors.huaweicloud.com/repository/maven/' }
@@ -30,9 +30,6 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url "https://www.jitpack.io" }
-        flatDir {
-            dirs 'libs'
-        }
     }
 }
 rootProject.name = "AndroidCatVodSpider"
