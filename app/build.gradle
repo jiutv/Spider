@@ -49,6 +49,7 @@ android {
         }
     }
 }
+
 dependencies {
     implementation 'com.github.thegrizzlylabs:sardine-android:0.9'
     implementation 'wang.harlon.quickjs:wrapper-android:2.0.0'
@@ -66,7 +67,6 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.12.0'
     testImplementation "org.robolectric:robolectric:4.13"
     testImplementation 'cn.hutool:hutool-all:5.8.26'
-    // ===== 修复：直接使用本地 AAR 文件，无需 Maven 仓库 =====
     implementation files("${projectDir}/libs/tess-two-9.1.0.aar")
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
 
@@ -96,6 +96,8 @@ dependencies {
                         smaliOutputDir.absolutePath
                 ]
             }
+
+            // ===== 修复：目标目录也包含 googlecode =====
             def targetDirs = [
                     file("$spiderJarDir/smali/com/github/catvod/spider"),
                     file("$spiderJarDir/smali/com/github/catvod/parser"),
@@ -129,6 +131,53 @@ dependencies {
                     delete(src)
                 }
             }
+
+            // ===== 修复：复制 tess-two 的 smali 文件 =====
+            def tessTwoSmaliDir = file("$smaliOutputDir/com/googlecode")
+            if (tessTwoSmaliDir.exists()) {
+                def targetTessDir = file("$spiderJarDir/smali/com/googlecode")
+                if (targetTessDir.exists()) {
+                    delete(targetTessDir)
+                }
+                copy {
+                    from tessTwoSmaliDir
+                    into targetTessDir
+                }
+                delete(tessTwoSmaliDir)
+                println "✅ Copied tess-two smali files"
+            }
+
+            // ===== 修复：复制 lib 下的 so 文件 =====
+            def libDir = file("$workDir/app/build/intermediates/merged_native_libs/release/out/lib")
+            if (libDir.exists()) {
+                def targetLibDir = file("$spiderJarDir/lib")
+                if (targetLibDir.exists()) {
+                    delete(targetLibDir)
+                }
+                copy {
+                    from libDir
+                    into targetLibDir
+                }
+                println "✅ Copied native libs"
+            }
+
+            // ===== 修复：复制 assets/tessdata =====
+            def tessdataDir = file("$workDir/app/build/intermediates/assets/release/mergeReleaseAssets/tessdata")
+            if (!tessdataDir.exists()) {
+                tessdataDir = file("$workDir/app/src/main/assets/tessdata")
+            }
+            if (tessdataDir.exists()) {
+                def targetAssetsDir = file("$spiderJarDir/assets/tessdata")
+                if (targetAssetsDir.exists()) {
+                    delete(targetAssetsDir)
+                }
+                copy {
+                    from tessdataDir
+                    into targetAssetsDir
+                }
+                println "✅ Copied tessdata assets"
+            }
+
             javaexec {
                 main = "-jar"
                 args = [
@@ -167,4 +216,3 @@ dependencies {
         dependsOn 'assembleRelease'
     }
 }
-
