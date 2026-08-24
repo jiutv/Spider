@@ -15,8 +15,12 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
+        // ===== 修复：添加 flatDir 仓库来解析本地 aar =====
+        flatDir {
+            dirs 'app/libs'
+        }
         maven { url 'https://mirrors.huaweicloud.com/repository/maven/' }
         maven { url 'https://maven.aliyun.com/repository/public/' }
         maven { url 'https://maven.aliyun.com/repository/google/' }
