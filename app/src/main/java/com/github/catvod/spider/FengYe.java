@@ -40,7 +40,6 @@ public class FengYe extends Spider {
     // ========== 静态Cookie，跨请求共享 ==========
     private static String sessionCookie = "";
 
-    // 模拟真实手机浏览器的完整UA
     private static final String UA = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36";
 
     private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
@@ -59,20 +58,14 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 构造完整手机浏览器请求头
+     * 通用请求头 —— 保持精简，避免 TVBox 的 OkHttp 不支持某些特性（如 br 编码）
      */
     private Map<String, String> getHeaders(String referer) {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
-        h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8");
-        h.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-        h.put("Accept-Encoding", "gzip, deflate, br");
-        h.put("Connection", "keep-alive");
-        h.put("Upgrade-Insecure-Requests", "1");
-        h.put("Sec-Fetch-Dest", "document");
-        h.put("Sec-Fetch-Mode", "navigate");
-        h.put("Sec-Fetch-Site", "same-origin");
-        h.put("Sec-Fetch-User", "?1");
+        h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        h.put("Accept-Language", "zh-CN,zh;q=0.9");
+        // ❌ 不要加 Accept-Encoding，OkHttp 会自动处理 gzip，但可能不支持 br
         
         // 强制保证 site_entry=1，这是网站反爬的核心校验
         String cookie = sessionCookie;
@@ -95,10 +88,10 @@ public class FengYe extends Spider {
         h.put("Accept", "application/json, text/javascript, */*; q=0.01");
         h.put("X-Requested-With", "XMLHttpRequest");
         h.put("Origin", siteUrl);
-        h.put("Sec-Fetch-Dest", "empty");
-        h.put("Sec-Fetch-Mode", "cors");
+        // 验证码图片请求用
+        h.put("Sec-Fetch-Dest", "image");
+        h.put("Sec-Fetch-Mode", "no-cors");
         h.put("Sec-Fetch-Site", "same-origin");
-        h.put("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
         return h;
     }
 
@@ -193,7 +186,7 @@ public class FengYe extends Spider {
         }
     }
 
-    // ========== 验证码处理（核心优化区） ==========
+    // ========== 验证码处理 ==========
     private String resolveCaptcha(String inputUrl) {
         String html = fetch(inputUrl);
         if (!html.contains("系统安全验证") && !html.contains("captcha.php?type=code")) {
@@ -222,13 +215,10 @@ public class FengYe extends Spider {
                 
                 JSONObject json = new JSONObject(result);
                 if (json.optInt("code") == 1) {
-                    // 验证成功，强制种下 site_entry
                     sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
-                    // 网站逻辑是验证成功后自动刷新页面，这里重新请求原页面
                     Thread.sleep(600);
                     return fetch(inputUrl);
                 }
-                // 验证失败，继续下一轮
                 Thread.sleep(300);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -238,18 +228,8 @@ public class FengYe extends Spider {
     }
 
     /**
-     * OCR识别优化版：针对枫叶影院2色验证码优化
-     * 
-     * 验证码特征：
-     * - 100x40 PNG，只有2种颜色
-     * - 背景：纯白 RGB(255,255,255)
-     * - 文字：深灰 RGB(50,50,50)
-     * - 固定4位数字
-     * 
-     * 优化策略：
-     * 1. 直接固定阈值二值化（不需要算平均灰度）
-     * 2. 反色增强对比度后放大3倍
-     * 3. 单字模式(PSM_SINGLE_WORD)识别
+     * OCR识别优化版
+     * 验证码特征：100x40 PNG，2色（背景白255，文字灰50），固定4位数字
      */
     private String ocr(byte[] imgBytes) {
         try {
@@ -260,17 +240,14 @@ public class FengYe extends Spider {
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
 
-            // 针对2色验证码，用固定阈值180即可完美分离（文字~50，背景~255）
-            // 同时尝试反色方案，取最佳4位结果
+            // 2色验证码用固定阈值即可，同时尝试反色方案
             int[] thresholds = new int[]{180, 150, 200};
             String best = "";
             
             for (int threshold : thresholds) {
-                // 方案A：黑字白底（直接二值化）
                 String textA = ocrWithThreshold(bmp, pixels, w, h, threshold, false);
                 if (textA.length() == 4) return textA;
                 
-                // 方案B：白字黑底（反色后二值化）
                 String textB = ocrWithThreshold(bmp, pixels, w, h, threshold, true);
                 if (textB.length() == 4) return textB;
                 
@@ -284,7 +261,6 @@ public class FengYe extends Spider {
     }
 
     private String ocrWithThreshold(Bitmap bmp, int[] pixels, int w, int h, int threshold, boolean invert) {
-        // 放大3倍，使用NEAREST保持边缘锐利（对这种2色图效果最好）
         Bitmap scaled = Bitmap.createBitmap(w * 3, h * 3, Bitmap.Config.ARGB_8888);
         
         for (int y = 0; y < h; y++) {
@@ -296,10 +272,8 @@ public class FengYe extends Spider {
                 
                 int color;
                 if (invert) {
-                    // 反色：灰字变白，白底变黑
                     color = gray < threshold ? Color.WHITE : Color.BLACK;
                 } else {
-                    // 正常：灰字变黑，白底变白
                     color = gray < threshold ? Color.BLACK : Color.WHITE;
                 }
                 
@@ -312,13 +286,10 @@ public class FengYe extends Spider {
         TessBaseAPI tess = new TessBaseAPI();
         tess.init(mContext.getFilesDir().getAbsolutePath(), "eng");
         tess.setVariable("tessedit_char_whitelist", "0123456789");
-        // PSM_SINGLE_WORD 适合固定长度的单词/数字串
         tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
         tess.setImage(scaled);
         String text = tess.getUTF8Text();
         tess.end();
-        
-        // 回收Bitmap防止内存泄漏
         scaled.recycle();
         
         return text != null ? text.replaceAll("[^0-9]", "").trim() : "";
@@ -353,9 +324,8 @@ public class FengYe extends Spider {
     @Override
     public void init(Context context, String extend) throws Exception {
         this.mContext = context;
-        // 注意：TessBaseAPI初始化需要提前准备训练数据文件
-        // CaptchaUtil.initTessData(context); 
-        // 初始化就种下 site_entry，避免首次请求就被拦截
+        // TessBaseAPI 训练数据需要提前放到 filesDir/tessdata/eng.traineddata
+        // CaptchaUtil.initTessData(context);
         sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
         fetch("/");
     }
