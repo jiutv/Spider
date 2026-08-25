@@ -11,7 +11,6 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-import com.github.catvod.net.OkResult;
 import com.googlecode.tesseract.android.TessBaseAPI;
 
 import org.json.JSONObject;
@@ -35,76 +34,40 @@ import okhttp3.Response;
 
 public class FengYe extends Spider {
 
-    private String siteUrl = "https://www.cd-zj.com";
-    private String backupUrl = "https://www.vip1949.com/";
-    private static String cachedSiteUrl = "";
-    private static long lastCheckTime = 0;
+    private String siteUrl = "https://maihaolian.com";
     private Context mContext;
 
-    // ========== 手动维护Cookie（关键修复）==========
+    // ========== 静态Cookie，跨请求共享 ==========
     private static String sessionCookie = "";
 
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
-
-    private static final String FILTER_JSON = "{\"2\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"2\"},{\"n\":\"国产剧\",\"v\":\"13\"},{\"n\":\"日韩剧\",\"v\":\"15\"},{\"n\":\"海外剧\",\"v\":\"16\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"1\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"1\"},{\"n\":\"动作片\",\"v\":\"6\"},{\"n\":\"喜剧片\",\"v\":\"7\"},{\"n\":\"恐怖片\",\"v\":\"8\"},{\"n\":\"科幻片\",\"v\":\"9\"},{\"n\":\"爱情片\",\"v\":\"10\"},{\"n\":\"剧情片\",\"v\":\"11\"},{\"n\":\"战争片\",\"v\":\"12\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"4\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"4\"},{\"n\":\"国产动漫\",\"v\":\"25\"},{\"n\":\"日韩动漫\",\"v\":\"26\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"3\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"3\"},{\"n\":\"大陆综艺\",\"v\":\"21\"},{\"n\":\"日韩综艺\",\"v\":\"22\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}]}";
 
     private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
-    private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
-    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
+    private static final Pattern PATTERN_PAGE = Pattern.compile("-(\\d+)\\.html");
+    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(\\{.*?\\})</script>", Pattern.DOTALL);
     private static final Pattern PATTERN_SEARCH_COUNT = Pattern.compile("const MY_CONSTANT\\s*=\\s*(\\d+)");
 
+    // ========== 工具方法 ==========
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
         if (pic.startsWith("//")) return "https:" + pic;
-        if (!pic.contains("://")) return removeTrailingSlash(siteUrl) + pic;
+        if (!pic.contains("://")) return siteUrl + pic;
         return pic;
     }
 
-    private String removeTrailingSlash(String str) {
-        if (TextUtils.isEmpty(str)) return str;
-        while (str.endsWith("/")) {
-            str = str.substring(0, str.length() - 1);
-        }
-        return str;
-    }
-
-    private String absUrl(String str) {
-        if (TextUtils.isEmpty(str)) return removeTrailingSlash(siteUrl) + "/";
-        if (str.startsWith("http")) return str;
-        return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
-    }
-
-    // ========== 关键修复：getHeaders 带上 sessionCookie ==========
-    private Map<String, String> getHeaders() {
+    private Map<String, String> getHeaders(String referer) {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
-        h.put("Accept", ACCEPT);
+        h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
         if (!TextUtils.isEmpty(sessionCookie)) {
             h.put("Cookie", sessionCookie);
-            System.out.println("=== [getHeaders] 带上Cookie: " + sessionCookie);
         }
-        h.put("Referer", removeTrailingSlash(siteUrl) + "/");
-        h.put("Cache-Control", "no-cache");
-        h.put("Pragma", "no-cache");
+        h.put("Referer", TextUtils.isEmpty(referer) ? siteUrl + "/" : referer);
         return h;
     }
 
-    private Map<String, String> getHeaders(String referer) {
-        Map<String, String> h = getHeaders();
-        h.put("Referer", removeTrailingSlash(referer) + "/");
-        return h;
-    }
-
-    private String getOrDefault(HashMap<String, String> map, String key, String defaultValue) {
-        if (map == null) return defaultValue;
-        String value = map.get(key);
-        return TextUtils.isEmpty(value) ? defaultValue : value;
-    }
-
-    // ========== Map转okhttp3.Headers ==========
     private okhttp3.Headers mapToHeaders(Map<String, String> map) {
         okhttp3.Headers.Builder builder = new okhttp3.Headers.Builder();
         for (Map.Entry<String, String> entry : map.entrySet()) {
@@ -113,605 +76,335 @@ public class FengYe extends Spider {
         return builder.build();
     }
 
-    // ========== 关键修复：从 Response 提取 Cookie ==========
-    private void extractCookies(Response response) {
-        if (response == null) return;
-        List<String> cookies = response.headers("Set-Cookie");
-        for (String c : cookies) {
-            System.out.println("=== [extractCookies] 收到: " + c);
-            updateSessionCookie(c);
-        }
-    }
-
-    // ========== 关键修复：fetchHtml 改用 newCall + 手动提取Cookie ==========
-    private String fetchHtml(String url) {
-        try {
-            if (!url.startsWith("http")) {
-                url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
-            }
-            System.out.println("=== [fetchHtml] 请求: " + url);
-
-            Request request = new Request.Builder()
-                    .url(url)
-                    .headers(mapToHeaders(getHeaders(siteUrl)))
-                    .build();
-
-            Response response = OkHttp.newCall(request);
-            System.out.println("=== [fetchHtml] 响应码: " + response.code());
-
-            // 提取Cookie
-            extractCookies(response);
-
-            String body = "";
-            if (response.body() != null) {
-                body = response.body().string();
-            }
-            System.out.println("=== [fetchHtml] 返回HTML长度: " + body.length());
-            return body;
-        } catch (Exception e) {
-            System.out.println("=== [fetchHtml] 异常: " + e.getMessage());
-            e.printStackTrace();
-        }
-        return "";
-    }
-
-    private byte[] fetchBytes(String url) {
-        try {
-            if (!url.startsWith("http")) {
-                url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
-            }
-            System.out.println("=== [fetchBytes] 请求: " + url);
-
-            Request request = new Request.Builder()
-                    .url(url)
-                    .headers(mapToHeaders(getHeaders(siteUrl)))
-                    .build();
-
-            Response response = OkHttp.newCall(request);
-            System.out.println("=== [fetchBytes] 响应码: " + response.code());
-
-            // 提取Cookie
-            extractCookies(response);
-
-            if (response.isSuccessful() && response.body() != null) {
-                byte[] bytes = response.body().bytes();
-                System.out.println("=== [fetchBytes] 返回 " + bytes.length + " bytes");
-                return bytes;
-            }
-        } catch (Exception e) {
-            System.out.println("=== [fetchBytes] 异常: " + e.getMessage());
-            e.printStackTrace();
-        }
-        return null;
-    }
-
     // ========== Cookie管理 ==========
-    private void updateSessionCookie(String setCookie) {
-        try {
-            String[] parts = setCookie.split(",");
-            for (String part : parts) {
-                String[] kv = part.trim().split(";");
-                if (kv.length > 0) {
-                    String cookiePair = kv[0].trim();
-                    String[] nameValue = cookiePair.split("=", 2);
-                    if (nameValue.length == 2) {
-                        String name = nameValue[0].trim();
-                        String value = nameValue[1].trim();
-                        sessionCookie = mergeCookie(sessionCookie, name, value);
-                    }
+    private void updateCookie(String setCookie) {
+        if (TextUtils.isEmpty(setCookie)) return;
+        String[] parts = setCookie.split(",");
+        for (String part : parts) {
+            String[] kv = part.trim().split(";");
+            if (kv.length > 0) {
+                String[] nv = kv[0].trim().split("=", 2);
+                if (nv.length == 2) {
+                    sessionCookie = mergeCookie(sessionCookie, nv[0].trim(), nv[1].trim());
                 }
             }
-            System.out.println("=== [updateSessionCookie] 当前Cookie: " + sessionCookie);
-        } catch (Exception e) {
-            System.out.println("=== [updateSessionCookie] 异常: " + e.getMessage());
         }
     }
 
-    private String mergeCookie(String oldCookie, String name, String value) {
-        if (TextUtils.isEmpty(oldCookie)) return name + "=" + value;
-        String[] cookies = oldCookie.split(";");
+    private String mergeCookie(String old, String name, String value) {
+        if (TextUtils.isEmpty(old)) return name + "=" + value;
         StringBuilder sb = new StringBuilder();
         boolean replaced = false;
-        for (String c : cookies) {
-            String[] nv = c.trim().split("=", 2);
+        for (String c : old.split(";")) {
+            c = c.trim();
+            if (c.isEmpty()) continue;
+            String[] nv = c.split("=", 2);
             if (nv.length == 2 && nv[0].trim().equals(name)) {
                 sb.append(name).append("=").append(value).append("; ");
                 replaced = true;
             } else {
-                sb.append(c.trim()).append("; ");
+                sb.append(c).append("; ");
             }
         }
-        if (!replaced) {
-            sb.append(name).append("=").append(value).append("; ");
-        }
-        String result = sb.toString();
-        if (result.endsWith("; ")) result = result.substring(0, result.length() - 2);
-        return result;
+        if (!replaced) sb.append(name).append("=").append(value).append("; ");
+        String r = sb.toString();
+        return r.endsWith("; ") ? r.substring(0, r.length() - 2) : r;
     }
 
-    // ========== 验证码自动识别 ==========
-    private String resolveCaptcha(String inputUrl) {
-        System.out.println("=== [resolveCaptcha] 开始: " + inputUrl);
-        String url = absUrl(inputUrl);
-        String html = fetchHtml(url);
-        System.out.println("=== [resolveCaptcha] HTML长度: " + html.length());
+    private void extractCookies(Response response) {
+        if (response == null) return;
+        for (String c : response.headers("Set-Cookie")) {
+            updateCookie(c);
+        }
+    }
 
-        if (!html.contains("系统安全验证") && !html.contains("mac_verify")
-                && !html.contains("captcha.php?type=code")) {
-            System.out.println("=== [resolveCaptcha] 无需验证码");
+    // ========== 网络请求（统一入口） ==========
+    private String fetch(String url) {
+        try {
+            if (!url.startsWith("http")) url = siteUrl + (url.startsWith("/") ? url : "/" + url);
+            Request request = new Request.Builder()
+                    .url(url)
+                    .headers(mapToHeaders(getHeaders(siteUrl + "/")))
+                    .build();
+            Response response = OkHttp.newCall(request);
+            extractCookies(response);
+            return response.body() != null ? response.body().string() : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private byte[] fetchBytes(String url) {
+        try {
+            if (!url.startsWith("http")) url = siteUrl + (url.startsWith("/") ? url : "/" + url);
+            Request request = new Request.Builder()
+                    .url(url)
+                    .headers(mapToHeaders(getHeaders(siteUrl + "/")))
+                    .build();
+            Response response = OkHttp.newCall(request);
+            extractCookies(response);
+            return (response.isSuccessful() && response.body() != null) ? response.body().bytes() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ========== 验证码处理 ==========
+    private String resolveCaptcha(String inputUrl) {
+        String html = fetch(inputUrl);
+        if (!html.contains("系统安全验证") && !html.contains("captcha.php?type=code")) {
             return html;
         }
 
-        System.out.println("=== [resolveCaptcha] ❌ 遇到验证码，启动识别...");
-
         for (int i = 0; i < 3; i++) {
             try {
-                System.out.println("=== [resolveCaptcha] 第" + (i + 1) + "次尝试");
+                // 下载验证码
+                String captchaUrl = siteUrl + "/captcha.php?type=code&r=" + System.currentTimeMillis();
+                byte[] img = fetchBytes(captchaUrl);
+                if (img == null || img.length == 0) continue;
 
-                // 1. 下载验证码
-                String captchaUrl = removeTrailingSlash(siteUrl)
-                        + "/captcha.php?type=code&r=" + System.currentTimeMillis();
-                System.out.println("=== [resolveCaptcha] 下载: " + captchaUrl);
-                byte[] imgBytes = fetchBytes(captchaUrl);
-                System.out.println("=== [resolveCaptcha] 图片: " + (imgBytes != null ? imgBytes.length + " bytes" : "null"));
+                // OCR
+                String code = ocr(img);
+                if (code.length() != 4) continue;
 
-                if (imgBytes == null || imgBytes.length == 0) {
-                    System.out.println("=== [resolveCaptcha] 图片下载失败");
-                    continue;
-                }
-
-                // 2. OCR
-                String code = ocrCaptchaDigits(imgBytes);
-                System.out.println("=== [resolveCaptcha] OCR结果: [" + code + "]");
-
-                if (code.length() != 4) {
-                    System.out.println("=== [resolveCaptcha] 长度不对(" + code.length() + ")，重试");
-                    continue;
-                }
-
-                // 3. 提交验证（关键修复：用 newCall 替代 OkHttp.post）
-                String verifyUrl = removeTrailingSlash(siteUrl) + "/captcha.php?type=verify";
-                System.out.println("=== [resolveCaptcha] 提交: check=" + code);
-
-                FormBody formBody = new FormBody.Builder()
-                        .add("check", code)
-                        .build();
-
-                Request postRequest = new Request.Builder()
-                        .url(verifyUrl)
-                        .post(formBody)
-                        .headers(mapToHeaders(getHeaders(url)))
+                // 提交验证
+                FormBody body = new FormBody.Builder().add("check", code).build();
+                Request post = new Request.Builder()
+                        .url(siteUrl + "/captcha.php?type=verify")
+                        .post(body)
+                        .headers(mapToHeaders(getHeaders(inputUrl)))
                         .addHeader("X-Requested-With", "XMLHttpRequest")
-                        .addHeader("Origin", removeTrailingSlash(siteUrl))
+                        .addHeader("Origin", siteUrl)
                         .build();
 
-                Response postResponse = OkHttp.newCall(postRequest);
-                System.out.println("=== [resolveCaptcha] 响应码: " + postResponse.code());
-
-                // 关键：提取验证后的 mac_verify
-                extractCookies(postResponse);
-
-                String body = "";
-                if (postResponse.body() != null) {
-                    body = postResponse.body().string();
-                }
-                System.out.println("=== [resolveCaptcha] 响应体: " + body);
-
-                JSONObject res = new JSONObject(body);
-                if (res.optInt("code") == 1) {
-                    System.out.println("=== [resolveCaptcha] ✅ 验证通过，等待500ms后重试");
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    String retryHtml = fetchHtml(url);
-                    System.out.println("=== [resolveCaptcha] 重试后长度: " + retryHtml.length());
-                    System.out.println("=== [resolveCaptcha] 重试后还有验证码: " + retryHtml.contains("系统安全验证"));
-                    return retryHtml;
-                } else {
-                    System.out.println("=== [resolveCaptcha] ❌ 验证失败: " + res.optString("msg"));
+                Response resp = OkHttp.newCall(post);
+                extractCookies(resp);
+                String result = resp.body() != null ? resp.body().string() : "";
+                if (new JSONObject(result).optInt("code") == 1) {
+                    Thread.sleep(500);
+                    // 验证通过后先访问首页（种下site_entry）
+                    fetch("/");
+                    Thread.sleep(300);
+                    return fetch(inputUrl);
                 }
             } catch (Exception e) {
-                System.out.println("=== [resolveCaptcha] 第" + (i + 1) + "次异常: " + e.getMessage());
                 e.printStackTrace();
             }
         }
-
-        System.out.println("=== [resolveCaptcha] 3次失败，返回空");
         return "";
     }
 
-    private String ocrCaptchaDigits(byte[] imgBytes) {
+    private String ocr(byte[] imgBytes) {
         try {
-            System.out.println("=== [OCR] 解码图片...");
             Bitmap bmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.length);
-            if (bmp == null) {
-                System.out.println("=== [OCR] decodeByteArray返回null");
-                return "";
-            }
-            System.out.println("=== [OCR] 图片尺寸: " + bmp.getWidth() + "x" + bmp.getHeight());
+            if (bmp == null) return "";
 
-            int w = bmp.getWidth();
-            int h = bmp.getHeight();
-
+            int w = bmp.getWidth(), h = bmp.getHeight();
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
+
             long sum = 0;
             for (int p : pixels) {
-                int r = (p >> 16) & 0xff;
-                int g = (p >> 8) & 0xff;
-                int b = p & 0xff;
-                sum += (r * 299 + g * 587 + b * 114) / 1000;
+                sum += (((p >> 16) & 0xff) * 299 + ((p >> 8) & 0xff) * 587 + (p & 0xff) * 114) / 1000;
             }
             int threshold = (int) (sum / (w * h) * 0.85);
-            System.out.println("=== [OCR] 阈值: " + threshold);
 
-            int scale = 3;
-            Bitmap scaled = Bitmap.createBitmap(w * scale, h * scale, Bitmap.Config.ARGB_8888);
+            Bitmap scaled = Bitmap.createBitmap(w * 3, h * 3, Bitmap.Config.ARGB_8888);
             for (int y = 0; y < h; y++) {
                 for (int x = 0; x < w; x++) {
                     int p = pixels[y * w + x];
-                    int gray = ((p >> 16) & 0xff) * 299 / 1000
-                             + ((p >> 8) & 0xff) * 587 / 1000
-                             + (p & 0xff) * 114 / 1000;
-                    int color = (gray < threshold) ? Color.BLACK : Color.WHITE;
-                    for (int dy = 0; dy < scale; dy++) {
-                        for (int dx = 0; dx < scale; dx++) {
-                            scaled.setPixel(x * scale + dx, y * scale + dy, color);
-                        }
-                    }
+                    int gray = ((p >> 16) & 0xff) * 299 / 1000 + ((p >> 8) & 0xff) * 587 / 1000 + (p & 0xff) * 114 / 1000;
+                    int color = gray < threshold ? Color.BLACK : Color.WHITE;
+                    for (int dy = 0; dy < 3; dy++)
+                        for (int dx = 0; dx < 3; dx++)
+                            scaled.setPixel(x * 3 + dx, y * 3 + dy, color);
                 }
             }
 
-            System.out.println("=== [OCR] Tesseract初始化...");
             TessBaseAPI tess = new TessBaseAPI();
-            String dataPath = mContext.getFilesDir().getAbsolutePath();
-            System.out.println("=== [OCR] dataPath: " + dataPath);
-            boolean initOk = tess.init(dataPath, "eng");
-            System.out.println("=== [OCR] init结果: " + initOk);
-
+            tess.init(mContext.getFilesDir().getAbsolutePath(), "eng");
             tess.setVariable("tessedit_char_whitelist", "0123456789");
             tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
             tess.setImage(scaled);
-
             String text = tess.getUTF8Text();
             tess.end();
-            System.out.println("=== [OCR] 原始结果: '" + text + "'");
-
-            if (text != null) {
-                return text.replaceAll("[^0-9]", "").trim();
-            }
+            return text != null ? text.replaceAll("[^0-9]", "").trim() : "";
         } catch (Exception e) {
-            System.out.println("=== [OCR] 异常: " + e.getMessage());
-            e.printStackTrace();
+            return "";
         }
-        return "";
     }
 
-    // ========== 解析列表（适配分类页+搜索页）==========
+    // ========== 解析列表 ==========
     private ArrayList<Vod> parseList(String html) {
         ArrayList<Vod> list = new ArrayList<>();
         LinkedHashSet<String> idSet = new LinkedHashSet<>();
         Document doc = Jsoup.parse(html);
-        Elements items = doc.select("a.public-list-exp");
+        for (Element item : doc.select("a.public-list-exp")) {
+            Matcher m = PATTERN_DETAIL_ID.matcher(item.attr("href"));
+            if (m.find() && idSet.add(m.group(1))) {
+                String id = m.group(1);
+                Element img = item.selectFirst("img");
+                String name = img != null ? img.attr("alt") : "";
+                if (TextUtils.isEmpty(name) && img != null) name = img.attr("title");
+                String pic = img != null ? fixPic(img.attr("data-src")) : "";
+                if (TextUtils.isEmpty(pic) && img != null) pic = fixPic(img.attr("src"));
 
-        for (Element item : items) {
-            Matcher matcher = PATTERN_DETAIL_ID.matcher(item.attr("href"));
-            if (matcher.find()) {
-                String id = matcher.group(1);
-                if (idSet.add(id)) {
-                    Element img = item.selectFirst("img");
-                    // 搜索页用alt更稳，分类页用title
-                    String name = "";
-                    if (img != null) {
-                        name = img.attr("alt");
-                        if (TextUtils.isEmpty(name)) name = img.attr("title");
-                    }
-                    // 分类页用data-src，搜索页可能直接用src
-                    String pic = img != null ? fixPic(img.attr("data-src")) : "";
-                    if (TextUtils.isEmpty(pic) && img != null) {
-                        pic = fixPic(img.attr("src"));
-                    }
+                Element remarkEl = item.selectFirst(".public-list-prb, .ft2");
+                String remark = remarkEl != null ? remarkEl.text() : "";
 
-                    Element remarkEl = item.selectFirst(".public-list-prb, .ft2");
-                    String remark = remarkEl != null ? remarkEl.text() : "";
-
-                    Element typeEl = item.selectFirst("span.public-prt");
-                    String type = typeEl != null ? typeEl.text() : "";
-
-                    Vod vod = new Vod(id, name, pic, remark);
-                    vod.setVodYear(type);
-                    list.add(vod);
-                }
+                Vod vod = new Vod(id, name, pic, remark);
+                list.add(vod);
             }
         }
         return list;
     }
 
-    private boolean isSiteOnline(String str) {
-        String url = removeTrailingSlash(str);
-        String[] urls = {url, url + "/cupfox-list/1--------1---.html"};
-        for (String test : urls) {
-            try {
-                OkResult result = OkHttp.get(test, null, getHeaders(url));
-                if (result != null) {
-                    int code = result.getCode();
-                    if (code >= 200 && code < 400) {
-                        String body = result.getBody();
-                        if (!TextUtils.isEmpty(body) && (body.contains("public-list-exp") || body.contains("影片"))) {
-                            return true;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-            }
-        }
-        return false;
-    }
-
+    // ========== 首页 ==========
     @Override
     public void init(Context context, String extend) throws Exception {
         this.mContext = context;
         CaptchaUtil.initTessData(context);
-
-        // 测试Tesseract
-        try {
-            TessBaseAPI testTess = new TessBaseAPI();
-            String dataPath = context.getFilesDir().getAbsolutePath();
-            boolean ok = testTess.init(dataPath, "eng");
-            System.out.println("=== [init] Tesseract测试: " + ok);
-            testTess.end();
-        } catch (Exception e) {
-            System.out.println("=== [init] Tesseract测试失败: " + e.getMessage());
-        }
-
-        this.siteUrl = "https://www.cd-zj.com";
-        this.backupUrl = "https://www.vip1949.com/";
-
-        if (!TextUtils.isEmpty(extend)) {
-            String ext = extend.trim();
-            if (!ext.startsWith("http")) {
-                try {
-                    JSONObject json = new JSONObject(ext);
-                    String url = json.optString("url");
-                    if (!TextUtils.isEmpty(url)) ext = url.trim();
-                } catch (Exception e) {
-                }
-            }
-            if (ext.startsWith("http")) {
-                this.backupUrl = ext;
-            }
-        }
-
-        long now = System.currentTimeMillis();
-        if (!TextUtils.isEmpty(cachedSiteUrl) && now - lastCheckTime < 300000) {
-            this.siteUrl = cachedSiteUrl;
-            return;
-        }
-
-        String testUrl = this.backupUrl;
-        String defaultUrl = "https://www.cd-zj.com";
-        try {
-            String body = OkHttp.string(testUrl, null, getHeaders(defaultUrl));
-            if (!TextUtils.isEmpty(body)) {
-                ArrayList<String> candidates = new ArrayList<>();
-                Matcher m = Pattern.compile("<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>").matcher(body);
-                while (m.find()) {
-                    String url = removeTrailingSlash(m.group(1));
-                    if (!TextUtils.isEmpty(url) && !candidates.contains(url)) {
-                        candidates.add(url);
-                    }
-                }
-                if (!candidates.isEmpty()) {
-                    for (String candidate : candidates) {
-                        if (isSiteOnline(candidate)) {
-                            defaultUrl = candidate;
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-        }
-
-        this.siteUrl = defaultUrl;
-        cachedSiteUrl = defaultUrl;
-        lastCheckTime = now;
     }
 
     @Override
     public String homeContent(boolean filter) throws Exception {
         ArrayList<Class> classes = new ArrayList<>();
-        classes.add(new Class("/label/qq", "腾讯VIP精选"));
-        classes.add(new Class("/label/bli", "B站VIP精选"));
-        classes.add(new Class("/label/youku", "优酷VIP精选"));
+        classes.add(new Class("/label/qq.html", "腾讯VIP"));
+        classes.add(new Class("/label/youku.html", "优酷VIP"));
+        classes.add(new Class("/label/bli.html", "B站VIP"));
+        classes.add(new Class("/label/hongguo.html", "红果短剧"));
         classes.add(new Class("2", "电视剧"));
         classes.add(new Class("1", "电影"));
         classes.add(new Class("4", "动漫"));
         classes.add(new Class("3", "综艺"));
-        classes.add(new Class("5", "热门短剧"));
-
-        JSONObject filterJson = new JSONObject(FILTER_JSON);
-
-        if (!filter) return Result.string(classes, new ArrayList<>());
-        return Result.string(classes, new ArrayList<>(), filterJson);
+        classes.add(new Class("5", "短剧"));
+        return Result.string(classes, new ArrayList<>());
     }
 
     @Override
     public String homeVideoContent() throws Exception {
-        return Result.string(parseList(fetchHtml("/")));
+        return Result.string(parseList(resolveCaptcha("/")));
     }
 
+    // ========== 分类 ==========
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
+        String url;
         if (tid.startsWith("/label/")) {
-            String url = tid + "/page/" + pg + ".html";
-            ArrayList<Vod> list = parseList(fetchHtml(url));
-            int page = Integer.parseInt(pg);
-            int pageCount = list.size() < 24 ? page : page + 2;
-            return Result.string(page, pageCount, 24, pageCount * 24, list);
+            url = tid.replace(".html", "") + "/page/" + pg + ".html";
+        } else {
+            url = "/type/" + tid + "-" + pg + ".html";
         }
 
-        String classType = getOrDefault(extend, "class", getOrDefault(extend, "tid", tid));
-        String area = getOrDefault(extend, "area", "");
-        String genre = getOrDefault(extend, "genre", "");
-        String lang = getOrDefault(extend, "lang", "");
-        String letter = getOrDefault(extend, "letter", "");
-        String sort = getOrDefault(extend, "sort", "");
-
-        if (!area.isEmpty() || !genre.isEmpty() || !lang.isEmpty() || !letter.isEmpty() || !sort.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("/cupfox-list/").append(classType).append("-")
-                    .append(area).append("-").append(genre).append("-")
-                    .append(lang).append("-").append(letter).append("-")
-                    .append(sort).append("---").append(pg).append(".html");
-            return Result.string(1, 1, 36, 9999, parseList(resolveCaptcha(sb.toString())));
-        }
-
-        String url = "/cupfox-list/" + classType + "--------" + pg + "---.html";
         String html = resolveCaptcha(url);
         ArrayList<Vod> list = parseList(html);
 
         int page = Integer.parseInt(pg);
         int totalPage = page;
         Document doc = Jsoup.parse(html);
-        Elements pageLinks = doc.select("a.page-link");
-        for (Element el : pageLinks) {
+        for (Element el : doc.select("a.page-link")) {
             if ("尾页".equals(el.text())) {
                 Matcher m = PATTERN_PAGE.matcher(el.attr("href"));
                 if (m.find()) totalPage = Integer.parseInt(m.group(1));
             }
         }
-        if (list.isEmpty()) totalPage = 0;
+        if (list.isEmpty()) totalPage = page;
 
         return Result.string(page, totalPage, 36, 9999, list);
     }
 
+    // ========== 详情 ==========
     @Override
     public String detailContent(List<String> ids) throws Exception {
-        if (ids == null || ids.isEmpty()) return Result.error("详情参数为空");
-        String id = ids.get(0);
-        if (id.contains("#")) id = id.substring(0, id.indexOf('#'));
-        id = id.trim();
-        if (TextUtils.isEmpty(id)) return Result.error("影片ID为空");
-
-        String html = fetchHtml("/detail/" + id + ".html");
+        String id = ids.get(0).split("#")[0].trim();
+        String html = fetch("/detail/" + id + ".html");
         Document doc = Jsoup.parse(html);
 
         Vod vod = new Vod(id, "", "");
-        Element titleEl = doc.selectFirst("h3.slide-info-title");
-        vod.setVodName(titleEl != null ? titleEl.text().trim() : "");
+        Element title = doc.selectFirst("h3.slide-info-title");
+        vod.setVodName(title != null ? title.text().trim() : "");
 
-        Element imgEl = doc.selectFirst("img.lazy");
-        vod.setVodPic(imgEl != null ? fixPic(imgEl.attr("data-src")) : "");
+        Element img = doc.selectFirst("img.lazy");
+        vod.setVodPic(img != null ? fixPic(img.attr("data-src")) : "");
 
-        String director = "", actor = "";
-        Elements infoEls = doc.select(".slide-info");
-        for (Element el : infoEls) {
+        for (Element el : doc.select(".slide-info")) {
             String text = el.text().trim();
-            if (text.startsWith("导演：")) director = text.replace("导演：", "").trim();
-            if (text.startsWith("演员：")) actor = text.replace("演员：", "").trim();
+            if (text.startsWith("导演：")) vod.setVodDirector(text.replace("导演：", "").trim());
+            if (text.startsWith("演员：")) vod.setVodActor(text.replace("演员：", "").trim());
         }
-        vod.setVodDirector(director);
-        vod.setVodActor(actor);
 
-        Element descEl = doc.selectFirst("#height_limit");
-        vod.setVodContent(descEl != null ? descEl.text().trim() : "");
+        Element desc = doc.selectFirst("#height_limit");
+        vod.setVodContent(desc != null ? desc.text().trim() : "");
 
-        Elements sourceTabs = doc.select(".anthology-tab a.swiper-slide");
         ArrayList<String> sources = new ArrayList<>();
-        for (Element tab : sourceTabs) {
-            String text = tab.text().trim();
-            if (!TextUtils.isEmpty(text)) sources.add(text);
+        for (Element tab : doc.select(".anthology-tab a.swiper-slide")) {
+            String t = tab.text().trim();
+            if (!TextUtils.isEmpty(t)) sources.add(t);
         }
 
-        Elements playBoxes = doc.select(".anthology-list-box");
         ArrayList<String> playUrls = new ArrayList<>();
-
-        for (int i = 0; i < playBoxes.size(); i++) {
-            ArrayList<String> episodes = new ArrayList<>();
-            Elements links = playBoxes.get(i).select("li a");
-            for (Element link : links) {
+        Elements boxes = doc.select(".anthology-list-box");
+        for (int i = 0; i < boxes.size(); i++) {
+            ArrayList<String> eps = new ArrayList<>();
+            for (Element link : boxes.get(i).select("li a")) {
                 Matcher m = PATTERN_PLAY_ID.matcher(link.attr("href"));
                 if (m.find()) {
-                    String epName = link.text().trim();
-                    if (TextUtils.isEmpty(epName)) epName = "正片";
-                    episodes.add(epName + "$" + m.group(1));
+                    String name = link.text().trim();
+                    if (TextUtils.isEmpty(name)) name = "正片";
+                    eps.add(name + "$" + m.group(1));
                 }
             }
-            if (!episodes.isEmpty() && i < sources.size()) {
-                ArrayList<String> reversed = new ArrayList<>();
-                for (int j = episodes.size() - 1; j >= 0; j--) {
-                    reversed.add(episodes.get(j));
-                }
-                playUrls.add(TextUtils.join("#", reversed));
+            if (!eps.isEmpty() && i < sources.size()) {
+                ArrayList<String> rev = new ArrayList<>();
+                for (int j = eps.size() - 1; j >= 0; j--) rev.add(eps.get(j));
+                playUrls.add(TextUtils.join("#", rev));
             }
         }
 
-        ArrayList<String> validSources = new ArrayList<>();
+        ArrayList<String> valid = new ArrayList<>();
         for (int i = 0; i < sources.size(); i++) {
-            if (i < playUrls.size()) validSources.add(sources.get(i));
+            if (i < playUrls.size()) valid.add(sources.get(i));
         }
 
-        vod.setVodPlayFrom(TextUtils.join("$$$", validSources));
+        vod.setVodPlayFrom(TextUtils.join("$$$", valid));
         vod.setVodPlayUrl(TextUtils.join("$$$", playUrls));
-
         return Result.string(vod);
     }
 
+    // ========== 播放 ==========
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        if (TextUtils.isEmpty(id)) return Result.error("播放ID为空");
         String vid = id.trim();
         if (vid.contains("$")) vid = vid.substring(vid.lastIndexOf("$") + 1);
         if (vid.contains("/")) vid = vid.substring(vid.lastIndexOf("/") + 1);
 
-        if (TextUtils.isEmpty(vid)) return Result.error("播放ID为空");
-
-        String playUrl;
-        if (!vid.startsWith("http")) {
-            playUrl = siteUrl + "/play/" + vid + ".html";
-        } else {
-            playUrl = vid;
-        }
-
-        String html = fetchHtml(playUrl);
+        String playUrl = vid.startsWith("http") ? vid : siteUrl + "/play/" + vid + ".html";
+        String html = fetch(playUrl);
         if (TextUtils.isEmpty(html)) {
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
+            return Result.get().url(playUrl).parse(1).header(getHeaders("")).string();
         }
 
         Matcher m = PATTERN_PLAYER_AAAA.matcher(html);
         if (!m.find()) {
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
+            return Result.get().url(playUrl).parse(1).header(getHeaders("")).string();
         }
 
         try {
             JSONObject json = new JSONObject(m.group(1));
             String url = json.optString("url");
-
-            if (TextUtils.isEmpty(url)) return Result.error("无播放地址");
-
-            if (url.startsWith("http") && (url.contains(".m3u8") || url.contains(".mp4"))) {
-                return Result.get().url(url).parse(0).header(getHeaders()).string();
+            if (!TextUtils.isEmpty(url) && url.startsWith("http") && (url.contains(".m3u8") || url.contains(".mp4"))) {
+                return Result.get().url(url).parse(0).header(getHeaders("")).string();
             }
-
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
-        } catch (Exception e) {
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
-        }
+        } catch (Exception e) {}
+        return Result.get().url(playUrl).parse(1).header(getHeaders("")).string();
     }
 
-    @Override
-    public String searchContent(String key, boolean quick) throws Exception {
-        return searchContent(key, quick, "1");
-    }
-
+    // ========== 搜索 ==========
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         String keyword = key == null ? "" : key.trim();
         String url = "/cupfox-search/------------" + URLEncoder.encode(keyword, "UTF-8")
-                + "----------" + pg + "---.html";
+                   + "----------" + pg + "---.html";
 
         String html = resolveCaptcha(url);
         ArrayList<Vod> list = parseList(html);
@@ -719,8 +412,7 @@ public class FengYe extends Spider {
         int page = Integer.parseInt(pg);
         int totalPage = page;
         Document doc = Jsoup.parse(html);
-        Elements pageLinks = doc.select("a.page-link");
-        for (Element el : pageLinks) {
+        for (Element el : doc.select("a.page-link")) {
             if ("尾页".equals(el.text())) {
                 Matcher m = PATTERN_PAGE.matcher(el.attr("href"));
                 if (m.find()) totalPage = Integer.parseInt(m.group(1));
@@ -730,10 +422,13 @@ public class FengYe extends Spider {
 
         int totalCount = list.size();
         Matcher countM = PATTERN_SEARCH_COUNT.matcher(html);
-        if (countM.find()) {
-            totalCount = Integer.parseInt(countM.group(1));
-        }
+        if (countM.find()) totalCount = Integer.parseInt(countM.group(1));
 
         return Result.string(page, totalPage, 36, totalCount, list);
+    }
+
+    @Override
+    public String searchContent(String key, boolean quick) throws Exception {
+        return searchContent(key, quick, "1");
     }
 }
