@@ -25,6 +25,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import okhttp3.Request;
+import okhttp3.Response;
+
 public class FengYe extends Spider {
 
     private String siteUrl = "https://www.cd-zj.com";
