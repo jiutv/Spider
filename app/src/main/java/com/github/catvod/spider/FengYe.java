@@ -44,7 +44,8 @@ public class FengYe extends Spider {
 
     private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
-    private static final Pattern PATTERN_PAGE = Pattern.compile("-(\\d+)\\.html");
+    private static final Pattern PATTERN_PAGE_TYPE = Pattern.compile("-(\\d+)\\.html");
+    private static final Pattern PATTERN_PAGE_LABEL = Pattern.compile("/page/(\\d+)\\.html");
     private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(\\{.*?\\})</script>", Pattern.DOTALL);
     private static final Pattern PATTERN_SEARCH_COUNT = Pattern.compile("const MY_CONSTANT\\s*=\\s*(\\d+)");
 
@@ -62,14 +63,14 @@ public class FengYe extends Spider {
         h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
         
-        // 合并 sessionCookie，并确保 site_entry 始终存在
+        // 强制保证 site_entry=1，这是网站反爬的核心校验
         String cookie = sessionCookie;
-        if (!cookie.contains("site_entry=")) {
-            cookie = mergeCookie(cookie, "site_entry", "1");
+        if (TextUtils.isEmpty(cookie)) {
+            cookie = "site_entry=1";
+        } else if (!cookie.contains("site_entry=")) {
+            cookie = cookie + "; site_entry=1";
         }
-        if (!TextUtils.isEmpty(cookie)) {
-            h.put("Cookie", cookie);
-        }
+        h.put("Cookie", cookie);
         
         h.put("Referer", TextUtils.isEmpty(referer) ? siteUrl + "/" : referer);
         return h;
@@ -163,18 +164,15 @@ public class FengYe extends Spider {
             return html;
         }
 
-        for (int i = 0; i < 5; i++) {  // 增加重试次数到5次
+        for (int i = 0; i < 5; i++) {
             try {
-                // 下载验证码
                 String captchaUrl = siteUrl + "/captcha.php?type=code&r=" + System.currentTimeMillis();
                 byte[] img = fetchBytes(captchaUrl);
                 if (img == null || img.length == 0) continue;
 
-                // OCR
                 String code = ocr(img);
                 if (code.length() != 4) continue;
 
-                // 提交验证
                 FormBody body = new FormBody.Builder().add("check", code).build();
                 Request post = new Request.Builder()
                         .url(siteUrl + "/captcha.php?type=verify")
@@ -188,12 +186,11 @@ public class FengYe extends Spider {
                 extractCookies(resp);
                 String result = resp.body() != null ? resp.body().string() : "";
                 if (new JSONObject(result).optInt("code") == 1) {
-                    // 关键修复：手动种下 site_entry，因为网站靠 JS 设置，爬虫不会执行
+                    // 验证成功，强制种下 site_entry（网站靠JS设置，爬虫不会执行）
                     sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
-                    Thread.sleep(500);
-                    // 验证通过后先访问首页（种下其他可能需要的cookie）
-                    fetch("/");
-                    Thread.sleep(300);
+                    Thread.sleep(600);
+                    fetch("/");  // 回首页再种一遍cookie
+                    Thread.sleep(400);
                     return fetch(inputUrl);
                 }
             } catch (Exception e) {
@@ -212,38 +209,47 @@ public class FengYe extends Spider {
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
 
-            // 改进阈值计算：使用Otsu-like自适应或固定阈值
             long sum = 0;
             for (int p : pixels) {
                 sum += (((p >> 16) & 0xff) * 299 + ((p >> 8) & 0xff) * 587 + (p & 0xff) * 114) / 1000;
             }
             int avg = (int) (sum / (w * h));
-            // 验证码背景通常偏白，文字偏黑，阈值设为平均值的0.75倍更易识别深色文字
-            int threshold = (int) (avg * 0.75);
 
-            Bitmap scaled = Bitmap.createBitmap(w * 3, h * 3, Bitmap.Config.ARGB_8888);
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    int p = pixels[y * w + x];
-                    int gray = ((p >> 16) & 0xff) * 299 / 1000 + ((p >> 8) & 0xff) * 587 / 1000 + (p & 0xff) * 114 / 1000;
-                    int color = gray < threshold ? Color.BLACK : Color.WHITE;
-                    for (int dy = 0; dy < 3; dy++)
-                        for (int dx = 0; dx < 3; dx++)
-                            scaled.setPixel(x * 3 + dx, y * 3 + dy, color);
-                }
+            // 尝试多种阈值，取最佳4位数字结果
+            int[] thresholds = new int[]{(int)(avg * 0.55), (int)(avg * 0.70), (int)(avg * 0.85), 120};
+            String best = "";
+            for (int threshold : thresholds) {
+                String text = ocrWithThreshold(bmp, pixels, w, h, threshold);
+                if (text.length() == 4) return text;
+                if (text.length() > best.length()) best = text;
             }
-
-            TessBaseAPI tess = new TessBaseAPI();
-            tess.init(mContext.getFilesDir().getAbsolutePath(), "eng");
-            tess.setVariable("tessedit_char_whitelist", "0123456789");
-            tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
-            tess.setImage(scaled);
-            String text = tess.getUTF8Text();
-            tess.end();
-            return text != null ? text.replaceAll("[^0-9]", "").trim() : "";
+            return best;
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String ocrWithThreshold(Bitmap bmp, int[] pixels, int w, int h, int threshold) {
+        Bitmap scaled = Bitmap.createBitmap(w * 3, h * 3, Bitmap.Config.ARGB_8888);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int p = pixels[y * w + x];
+                int gray = ((p >> 16) & 0xff) * 299 / 1000 + ((p >> 8) & 0xff) * 587 / 1000 + (p & 0xff) * 114 / 1000;
+                int color = gray < threshold ? Color.BLACK : Color.WHITE;
+                for (int dy = 0; dy < 3; dy++)
+                    for (int dx = 0; dx < 3; dx++)
+                        scaled.setPixel(x * 3 + dx, y * 3 + dy, color);
+            }
+        }
+
+        TessBaseAPI tess = new TessBaseAPI();
+        tess.init(mContext.getFilesDir().getAbsolutePath(), "eng");
+        tess.setVariable("tessedit_char_whitelist", "0123456789");
+        tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
+        tess.setImage(scaled);
+        String text = tess.getUTF8Text();
+        tess.end();
+        return text != null ? text.replaceAll("[^0-9]", "").trim() : "";
     }
 
     // ========== 解析列表 ==========
@@ -276,6 +282,9 @@ public class FengYe extends Spider {
     public void init(Context context, String extend) throws Exception {
         this.mContext = context;
         CaptchaUtil.initTessData(context);
+        // 初始化就种下 site_entry，避免首次请求就被拦截
+        sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
+        fetch("/");
     }
 
     @Override
@@ -284,7 +293,7 @@ public class FengYe extends Spider {
         classes.add(new Class("/label/qq.html", "腾讯VIP"));
         classes.add(new Class("/label/youku.html", "优酷VIP"));
         classes.add(new Class("/label/bli.html", "B站VIP"));
-        classes.add(new Class("/label/duanju.html", "红果短剧"));  // 修复：hongguo -> duanju
+        classes.add(new Class("/label/duanju.html", "红果短剧"));
         classes.add(new Class("2", "电视剧"));
         classes.add(new Class("1", "电影"));
         classes.add(new Class("4", "动漫"));
@@ -303,14 +312,14 @@ public class FengYe extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         String url;
         if (tid.startsWith("/label/")) {
-            // 修复：label 第一页直接访问 .html，不跳转到 /page/1.html
+            // label 分页：第一页直接访问 .html，后续 /page/N.html
             if ("1".equals(pg)) {
                 url = tid;
             } else {
                 url = tid.replace(".html", "") + "/page/" + pg + ".html";
             }
         } else {
-            // 修复：type 第一页是 /type/2.html，不是 /type/2-1.html
+            // type 分页：第一页 /type/2.html，后续 /type/2-N.html
             if ("1".equals(pg)) {
                 url = "/type/" + tid + ".html";
             } else {
@@ -326,8 +335,15 @@ public class FengYe extends Spider {
         Document doc = Jsoup.parse(html);
         for (Element el : doc.select("a.page-link")) {
             if ("尾页".equals(el.text())) {
-                Matcher m = PATTERN_PAGE.matcher(el.attr("href"));
-                if (m.find()) totalPage = Integer.parseInt(m.group(1));
+                String href = el.attr("href");
+                // 关键修复：label 尾页是 /page/218.html，type 尾页是 /type/2-218.html，分别匹配
+                Matcher mLabel = PATTERN_PAGE_LABEL.matcher(href);
+                Matcher mType = PATTERN_PAGE_TYPE.matcher(href);
+                if (mLabel.find()) {
+                    totalPage = Integer.parseInt(mLabel.group(1));
+                } else if (mType.find()) {
+                    totalPage = Integer.parseInt(mType.group(1));
+                }
             }
         }
         if (list.isEmpty()) totalPage = page;
@@ -436,7 +452,7 @@ public class FengYe extends Spider {
         Document doc = Jsoup.parse(html);
         for (Element el : doc.select("a.page-link")) {
             if ("尾页".equals(el.text())) {
-                Matcher m = PATTERN_PAGE.matcher(el.attr("href"));
+                Matcher m = PATTERN_PAGE_TYPE.matcher(el.attr("href"));
                 if (m.find()) totalPage = Integer.parseInt(m.group(1));
             }
         }
