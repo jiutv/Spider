@@ -10,8 +10,8 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 
 /**
- * 纯 Java 实现的轻量级 OCR 验证码识别
- * 支持 PNG/JPG/WEBP/GIF 等多种格式
+ * 纯 Java 实现的轻量级 OCR 验证码识别 V2
+ * 改进：去噪 + 自适应二值化 + 更精细特征
  */
 class CaptchaUtil {
 
@@ -25,29 +25,18 @@ class CaptchaUtil {
 
         System.out.println("=== OCR: imgBytes length=" + imgBytes.length);
 
-        // 打印文件头，判断格式
         if (imgBytes.length > 4) {
             StringBuilder hex = new StringBuilder("=== OCR: header=");
             for (int i = 0; i < Math.min(16, imgBytes.length); i++) {
                 hex.append(String.format("%02X ", imgBytes[i] & 0xFF));
             }
             System.out.println(hex.toString());
-
-            // 判断文件类型
-            String type = detectType(imgBytes);
-            System.out.println("=== OCR: detected type=" + type);
         }
 
         try {
-            // 尝试解码
             Bitmap src = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.length);
             if (src == null) {
-                System.out.println("=== OCR: decode image failed, trying WebP...");
-                // 有些设备不支持 WebP，尝试转换
-                src = decodeWebP(imgBytes);
-            }
-            if (src == null) {
-                System.out.println("=== OCR: all decode methods failed");
+                System.out.println("=== OCR: decode image failed");
                 return "";
             }
 
@@ -60,8 +49,13 @@ class CaptchaUtil {
                 return "";
             }
 
+            // 去噪
+            int[][] pixels = bitmapToArray(processed);
+            pixels = removeNoise(pixels);
+            pixels = removeHorizontalLines(pixels);
+
             // 识别
-            String result = recognizeDigits(processed);
+            String result = recognizeDigits(pixels);
             System.out.println("=== OCR result: [" + result + "]");
 
             return result;
@@ -73,47 +67,12 @@ class CaptchaUtil {
         }
     }
 
-    /**
-     * 检测文件类型
-     */
-    private static String detectType(byte[] data) {
-        if (data.length < 4) return "unknown";
-        // PNG: 89 50 4E 47
-        if (data[0] == (byte)0x89 && data[1] == (byte)0x50 && data[2] == (byte)0x4E && data[3] == (byte)0x47)
-            return "PNG";
-        // JPG: FF D8 FF
-        if (data[0] == (byte)0xFF && data[1] == (byte)0xD8 && data[2] == (byte)0xFF)
-            return "JPG";
-        // GIF: 47 49 46 38
-        if (data[0] == (byte)0x47 && data[1] == (byte)0x49 && data[2] == (byte)0x46 && data[3] == (byte)0x38)
-            return "GIF";
-        // WEBP: 52 49 46 46 ... 57 45 42 50
-        if (data[0] == (byte)0x52 && data[1] == (byte)0x49 && data[2] == (byte)0x46 && data[3] == (byte)0x46)
-            return "WEBP";
-        // BMP: 42 4D
-        if (data[0] == (byte)0x42 && data[1] == (byte)0x4D)
-            return "BMP";
-        return "unknown";
-    }
-
-    /**
-     * 尝试解码 WebP（某些 Android 版本不支持）
-     */
-    private static Bitmap decodeWebP(byte[] data) {
-        try {
-            // 如果系统支持 WebP，decodeByteArray 应该已经成功了
-            // 这里返回 null 表示不支持
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private static Bitmap preprocess(Bitmap src) {
         int width = src.getWidth();
         int height = src.getHeight();
 
-        float scale = 3.0f;
+        // 放大 4 倍
+        float scale = 4.0f;
         Matrix matrix = new Matrix();
         matrix.postScale(scale, scale);
         Bitmap scaled = Bitmap.createBitmap(src, 0, 0, width, height, matrix, true);
@@ -125,13 +84,14 @@ class CaptchaUtil {
         Canvas canvas = new Canvas(out);
         Paint paint = new Paint();
 
+        // 灰度 + 对比度
         ColorMatrix cm = new ColorMatrix();
         cm.setSaturation(0);
 
         ColorMatrix contrast = new ColorMatrix(new float[] {
-            3.0f, 0, 0, 0, -280,
-            0, 3.0f, 0, 0, -280,
-            0, 0, 3.0f, 0, -280,
+            4.0f, 0, 0, 0, -350,
+            0, 4.0f, 0, 0, -350,
+            0, 0, 4.0f, 0, -350,
             0, 0, 0, 1, 0
         });
         cm.postConcat(contrast);
@@ -142,10 +102,9 @@ class CaptchaUtil {
         return out;
     }
 
-    private static String recognizeDigits(Bitmap img) {
+    private static int[][] bitmapToArray(Bitmap img) {
         int w = img.getWidth();
         int h = img.getHeight();
-
         int[][] pixels = new int[h][w];
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -154,7 +113,155 @@ class CaptchaUtil {
                 pixels[y][x] = gray < 128 ? 0 : 255;
             }
         }
+        return pixels;
+    }
 
+    /**
+     * 去除孤立噪点（3x3 邻域统计）
+     */
+    private static int[][] removeNoise(int[][] pixels) {
+        int h = pixels.length;
+        int w = pixels[0].length;
+        int[][] result = new int[h][w];
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if (pixels[y][x] == 255) {
+                    result[y][x] = 255;
+                    continue;
+                }
+
+                // 统计 3x3 邻域黑色像素数
+                int blackCount = 0;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int ny = y + dy;
+                        int nx = x + dx;
+                        if (ny >= 0 && ny < h && nx >= 0 && nx < w && pixels[ny][nx] == 0) {
+                            blackCount++;
+                        }
+                    }
+                }
+
+                // 如果周围黑色像素少于 3 个，认为是噪点
+                result[y][x] = (blackCount >= 3) ? 0 : 255;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 去除水平干扰线
+     */
+    private static int[][] removeHorizontalLines(int[][] pixels) {
+        int h = pixels.length;
+        int w = pixels[0].length;
+        int[][] result = new int[h][w];
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                result[y][x] = pixels[y][x];
+            }
+        }
+
+        for (int y = 1; y < h - 1; y++) {
+            int blackCount = 0;
+            for (int x = 0; x < w; x++) {
+                if (pixels[y][x] == 0) blackCount++;
+            }
+            // 如果一行几乎都是黑色，可能是干扰线
+            if (blackCount > w * 0.7) {
+                for (int x = 0; x < w; x++) {
+                    // 只去除连续的水平线，保留垂直结构
+                    if (pixels[y-1][x] == 255 && pixels[y+1][x] == 255) {
+                        result[y][x] = 255;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static String recognizeDigits(int[][] pixels) {
+        int h = pixels.length;
+        int w = pixels[0].length;
+
+        // 垂直投影分割字符
+        int[] projection = new int[w];
+        for (int x = 0; x < w; x++) {
+            for (int y = 0; y < h; y++) {
+                if (pixels[y][x] == 0) projection[x]++;
+            }
+        }
+
+        // 找到 4 个字符的位置
+        ArrayList<int[]> charRanges = findCharRanges(projection, h);
+        if (charRanges.size() < 4) {
+            System.out.println("=== OCR: found only " + charRanges.size() + " chars");
+            // 如果分割不到 4 个，用固定宽度
+            return recognizeByFixedWidth(pixels);
+        }
+
+        StringBuilder result = new StringBuilder();
+        for (int[] range : charRanges) {
+            String digit = recognizeSingleDigit(pixels, range[0], range[1], h);
+            result.append(digit);
+        }
+
+        return result.toString();
+    }
+
+    private static ArrayList<int[]> findCharRanges(int[] projection, int h) {
+        ArrayList<int[]> ranges = new ArrayList<>();
+        int w = projection.length;
+        int threshold = h / 20; // 最小高度阈值
+
+        int start = -1;
+        for (int x = 0; x < w; x++) {
+            if (projection[x] > threshold) {
+                if (start == -1) start = x;
+            } else {
+                if (start != -1) {
+                    if (x - start > 5) { // 最小宽度
+                        ranges.add(new int[]{start, x});
+                    }
+                    start = -1;
+                }
+            }
+        }
+        if (start != -1 && w - start > 5) {
+            ranges.add(new int[]{start, w});
+        }
+
+        // 如果找到太多，合并相邻的
+        while (ranges.size() > 4) {
+            // 合并最窄的相邻对
+            int minWidth = Integer.MAX_VALUE;
+            int mergeIdx = -1;
+            for (int i = 0; i < ranges.size() - 1; i++) {
+                int gap = ranges.get(i+1)[0] - ranges.get(i)[1];
+                if (gap < minWidth) {
+                    minWidth = gap;
+                    mergeIdx = i;
+                }
+            }
+            if (mergeIdx >= 0) {
+                int[] merged = new int[]{ranges.get(mergeIdx)[0], ranges.get(mergeIdx+1)[1]};
+                ranges.remove(mergeIdx+1);
+                ranges.remove(mergeIdx);
+                ranges.add(mergeIdx, merged);
+            } else {
+                break;
+            }
+        }
+
+        return ranges;
+    }
+
+    private static String recognizeByFixedWidth(int[][] pixels) {
+        int h = pixels.length;
+        int w = pixels[0].length;
         int charWidth = w / 4;
         StringBuilder result = new StringBuilder();
 
@@ -170,12 +277,14 @@ class CaptchaUtil {
 
     private static String recognizeSingleDigit(int[][] pixels, int left, int right, int h) {
         int charW = right - left;
-        int gridH = h / 7;
-        int gridW = charW / 5;
-        double[] features = new double[35];
 
-        for (int gy = 0; gy < 7; gy++) {
-            for (int gx = 0; gx < 5; gx++) {
+        // 10x8 网格特征
+        int gridH = h / 8;
+        int gridW = charW / 6;
+        double[] features = new double[48];
+
+        for (int gy = 0; gy < 8; gy++) {
+            for (int gx = 0; gx < 6; gx++) {
                 int y1 = gy * gridH;
                 int y2 = (gy + 1) * gridH;
                 int x1 = left + gx * gridW;
@@ -189,21 +298,32 @@ class CaptchaUtil {
                         total++;
                     }
                 }
-                features[gy * 5 + gx] = total > 0 ? (double) blackCount / total : 0;
+                features[gy * 6 + gx] = total > 0 ? (double) blackCount / total : 0;
             }
         }
 
+        // 更精细的数字模板（8x6 网格）
         double[][] templates = {
-            {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            {0,0,1,0,0, 0,1,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,1,1,0},
-            {0,1,1,1,0, 1,0,0,0,1, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,1,0,0,0, 1,1,1,1,1},
-            {0,1,1,1,0, 1,0,0,0,1, 0,0,0,0,1, 0,0,1,1,0, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            {0,0,0,1,0, 0,0,1,1,0, 0,1,0,1,0, 1,0,0,1,0, 1,1,1,1,1, 0,0,0,1,0, 0,0,0,1,0},
-            {1,1,1,1,1, 1,0,0,0,0, 1,1,1,1,0, 0,0,0,0,1, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,0, 1,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            {1,1,1,1,1, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0},
-            {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
-            {0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,1, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0},
+            // 0
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 1,0,0,0,0,1, 1,0,0,0,0,1, 1,0,0,0,0,1, 1,0,0,0,0,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
+            // 1
+            {0,0,0,1,0,0, 0,0,1,1,0,0, 0,1,0,1,0,0, 0,0,0,1,0,0, 0,0,0,1,0,0, 0,0,0,1,0,0, 0,0,0,1,0,0, 0,1,1,1,1,1},
+            // 2
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 0,0,0,0,1,1, 0,0,0,1,1,0, 0,0,1,1,0,0, 0,1,1,0,0,0, 1,1,0,0,0,0, 1,1,1,1,1,1},
+            // 3
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 0,0,0,0,1,1, 0,0,1,1,1,0, 0,0,0,0,1,1, 0,0,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
+            // 4
+            {0,0,0,0,1,0, 0,0,0,1,1,0, 0,0,1,0,1,0, 0,1,0,0,1,0, 1,1,1,1,1,1, 0,0,0,0,1,0, 0,0,0,0,1,0, 0,0,0,0,1,0},
+            // 5
+            {1,1,1,1,1,1, 1,1,0,0,0,0, 1,1,1,1,1,0, 0,0,0,0,1,1, 0,0,0,0,1,1, 0,0,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
+            // 6
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 1,1,0,0,0,0, 1,1,1,1,1,0, 1,1,0,0,1,1, 1,1,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
+            // 7
+            {1,1,1,1,1,1, 0,0,0,0,1,1, 0,0,0,0,1,1, 0,0,0,1,1,0, 0,0,1,1,0,0, 0,0,1,1,0,0, 0,0,1,1,0,0, 0,0,1,1,0,0},
+            // 8
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0, 1,1,0,0,1,1, 1,1,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
+            // 9
+            {0,1,1,1,1,0, 1,1,0,0,1,1, 1,1,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,1, 0,0,0,0,1,1, 1,1,0,0,1,1, 0,1,1,1,1,0},
         };
 
         String[] digits = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
