@@ -35,6 +35,9 @@ public class FengYe extends Spider {
     private static String cachedSiteUrl = "";
     private static long lastCheckTime = 0;
     private Context mContext;
+    
+    // 用于保存Cookie
+    private String cookie = "";
 
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
@@ -76,6 +79,9 @@ public class FengYe extends Spider {
         h.put("Referer", removeTrailingSlash(siteUrl) + "/");
         h.put("Cache-Control", "no-cache");
         h.put("Pragma", "no-cache");
+        if (!TextUtils.isEmpty(cookie)) {
+            h.put("Cookie", cookie);
+        }
         return h;
     }
 
@@ -113,6 +119,12 @@ public class FengYe extends Spider {
             Response response = OkHttp.newCall(request);
             if (response.isSuccessful() && response.body() != null) {
                 byte[] bytes = response.body().bytes();
+                // 保存返回的Cookie
+                String setCookie = response.header("Set-Cookie");
+                if (!TextUtils.isEmpty(setCookie)) {
+                    cookie = setCookie;
+                    System.out.println("=== fetchBytes: saved cookie=" + cookie);
+                }
                 System.out.println("=== fetchBytes: got " + bytes.length + " bytes");
                 return bytes;
             }
@@ -127,7 +139,7 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 验证码处理 - 使用同一个OkHttpClient保持Cookie/Session
+     * 验证码处理 - 手动管理Cookie
      */
     private String resolveCaptcha(String inputUrl) {
         String url = absUrl(inputUrl);
@@ -141,27 +153,16 @@ public class FengYe extends Spider {
 
         System.out.println("=== resolveCaptcha: captcha detected, solving...");
 
-        // 使用同一个OkHttpClient实例，保持cookies
-        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
-                .cookieJar(new okhttp3.JavaNetCookieJar(new java.net.CookieManager()))
-                .build();
-
         for (int i = 0; i < 5; i++) {
             try {
-                // 1. 获取验证码图片
+                // 1. 重置Cookie，重新开始
+                cookie = "";
+                
+                // 2. 获取验证码图片
                 String verifyUrl = absUrl("/captcha.php?type=code&r=" + Math.random());
                 System.out.println("=== resolveCaptcha: fetching captcha from " + verifyUrl);
                 
-                okhttp3.Request imgRequest = new okhttp3.Request.Builder()
-                        .url(verifyUrl)
-                        .header("User-Agent", UA)
-                        .header("Referer", removeTrailingSlash(siteUrl) + "/")
-                        .header("Accept", ACCEPT)
-                        .build();
-                
-                okhttp3.Response imgResponse = client.newCall(imgRequest).execute();
-                byte[] imgBytes = imgResponse.body() != null ? imgResponse.body().bytes() : null;
-                
+                byte[] imgBytes = fetchBytes(verifyUrl);
                 if (imgBytes == null || imgBytes.length == 0) {
                     System.out.println("=== resolveCaptcha: imgBytes null or empty");
                     continue;
@@ -169,48 +170,38 @@ public class FengYe extends Spider {
                 
                 System.out.println("=== resolveCaptcha: got " + imgBytes.length + " bytes");
                 
-                // 2. OCR识别验证码
+                // 3. OCR识别验证码
                 String code = captchaOCR(imgBytes);
                 System.out.println("=== resolveCaptcha: OCR result = [" + code + "]");
                 
                 if (TextUtils.isEmpty(code) || code.length() != 4) {
-                    System.out.println("=== resolveCaptcha: invalid code length: " + (code == null ? "null" : code.length()));
+                    System.out.println("=== resolveCaptcha: invalid code length");
                     continue;
                 }
 
-                // 3. 提交验证码 - 使用同一个client保持cookies
-                okhttp3.FormBody formBody = new okhttp3.FormBody.Builder()
-                        .add("check", code)
-                        .build();
+                // 4. 提交验证码
+                Map<String, String> params = new HashMap<>();
+                params.put("check", code);
                 
-                okhttp3.Request verifyRequest = new okhttp3.Request.Builder()
-                        .url(absUrl("/captcha.php?type=verify"))
-                        .post(formBody)
-                        .header("User-Agent", UA)
-                        .header("Referer", removeTrailingSlash(siteUrl) + "/")
-                        .header("Accept", ACCEPT)
-                        .build();
+                System.out.println("=== verify: submitting code=" + code + ", cookie=" + cookie);
+                OkResult result = OkHttp.post(absUrl("/captcha.php?type=verify"), params, getHeaders(siteUrl));
                 
-                okhttp3.Response verifyResponse = client.newCall(verifyRequest).execute();
-                String body = verifyResponse.body() != null ? verifyResponse.body().string() : "";
-                System.out.println("=== verify response: " + body);
-                
-                JSONObject json = new JSONObject(body);
-                if (json.optInt("code") == 1) {
-                    System.out.println("=== verify SUCCESS! (attempt " + (i + 1) + ")");
-                    // 4. 验证通过后，用同一个client获取数据
-                    okhttp3.Request dataRequest = new okhttp3.Request.Builder()
-                            .url(url)
-                            .header("User-Agent", UA)
-                            .header("Referer", removeTrailingSlash(siteUrl) + "/")
-                            .header("Accept", ACCEPT)
-                            .build();
-                    okhttp3.Response dataResponse = client.newCall(dataRequest).execute();
-                    String result = dataResponse.body() != null ? dataResponse.body().string() : "";
-                    System.out.println("=== resolveCaptcha: fetched data length=" + result.length());
-                    return result;
+                if (result != null) {
+                    String body = result.getBody();
+                    System.out.println("=== verify response: " + body);
+                    
+                    JSONObject json = new JSONObject(body);
+                    if (json.optInt("code") == 1) {
+                        System.out.println("=== verify SUCCESS! (attempt " + (i + 1) + ")");
+                        // 验证通过后，获取数据
+                        String data = fetchHtml(url);
+                        System.out.println("=== resolveCaptcha: fetched data length=" + data.length());
+                        return data;
+                    } else {
+                        System.out.println("=== verify FAILED! (attempt " + (i + 1) + "): " + json.optString("msg"));
+                    }
                 } else {
-                    System.out.println("=== verify FAILED! (attempt " + (i + 1) + "): " + json.optString("msg"));
+                    System.out.println("=== verify: OkResult is null");
                 }
             } catch (Exception e) {
                 System.out.println("=== resolveCaptcha exception: " + e.getMessage());
