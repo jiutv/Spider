@@ -61,9 +61,16 @@ public class FengYe extends Spider {
         h.put("User-Agent", UA);
         h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
-        if (!TextUtils.isEmpty(sessionCookie)) {
-            h.put("Cookie", sessionCookie);
+        
+        // 合并 sessionCookie，并确保 site_entry 始终存在
+        String cookie = sessionCookie;
+        if (!cookie.contains("site_entry=")) {
+            cookie = mergeCookie(cookie, "site_entry", "1");
         }
+        if (!TextUtils.isEmpty(cookie)) {
+            h.put("Cookie", cookie);
+        }
+        
         h.put("Referer", TextUtils.isEmpty(referer) ? siteUrl + "/" : referer);
         return h;
     }
@@ -156,7 +163,7 @@ public class FengYe extends Spider {
             return html;
         }
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 5; i++) {  // 增加重试次数到5次
             try {
                 // 下载验证码
                 String captchaUrl = siteUrl + "/captcha.php?type=code&r=" + System.currentTimeMillis();
@@ -181,8 +188,10 @@ public class FengYe extends Spider {
                 extractCookies(resp);
                 String result = resp.body() != null ? resp.body().string() : "";
                 if (new JSONObject(result).optInt("code") == 1) {
+                    // 关键修复：手动种下 site_entry，因为网站靠 JS 设置，爬虫不会执行
+                    sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
                     Thread.sleep(500);
-                    // 验证通过后先访问首页（种下site_entry）
+                    // 验证通过后先访问首页（种下其他可能需要的cookie）
                     fetch("/");
                     Thread.sleep(300);
                     return fetch(inputUrl);
@@ -203,11 +212,14 @@ public class FengYe extends Spider {
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
 
+            // 改进阈值计算：使用Otsu-like自适应或固定阈值
             long sum = 0;
             for (int p : pixels) {
                 sum += (((p >> 16) & 0xff) * 299 + ((p >> 8) & 0xff) * 587 + (p & 0xff) * 114) / 1000;
             }
-            int threshold = (int) (sum / (w * h) * 0.85);
+            int avg = (int) (sum / (w * h));
+            // 验证码背景通常偏白，文字偏黑，阈值设为平均值的0.75倍更易识别深色文字
+            int threshold = (int) (avg * 0.75);
 
             Bitmap scaled = Bitmap.createBitmap(w * 3, h * 3, Bitmap.Config.ARGB_8888);
             for (int y = 0; y < h; y++) {
@@ -272,7 +284,7 @@ public class FengYe extends Spider {
         classes.add(new Class("/label/qq.html", "腾讯VIP"));
         classes.add(new Class("/label/youku.html", "优酷VIP"));
         classes.add(new Class("/label/bli.html", "B站VIP"));
-        classes.add(new Class("/label/hongguo.html", "红果短剧"));
+        classes.add(new Class("/label/duanju.html", "红果短剧"));  // 修复：hongguo -> duanju
         classes.add(new Class("2", "电视剧"));
         classes.add(new Class("1", "电影"));
         classes.add(new Class("4", "动漫"));
@@ -291,9 +303,19 @@ public class FengYe extends Spider {
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         String url;
         if (tid.startsWith("/label/")) {
-            url = tid.replace(".html", "") + "/page/" + pg + ".html";
+            // 修复：label 第一页直接访问 .html，不跳转到 /page/1.html
+            if ("1".equals(pg)) {
+                url = tid;
+            } else {
+                url = tid.replace(".html", "") + "/page/" + pg + ".html";
+            }
         } else {
-            url = "/type/" + tid + "-" + pg + ".html";
+            // 修复：type 第一页是 /type/2.html，不是 /type/2-1.html
+            if ("1".equals(pg)) {
+                url = "/type/" + tid + ".html";
+            } else {
+                url = "/type/" + tid + "-" + pg + ".html";
+            }
         }
 
         String html = resolveCaptcha(url);
