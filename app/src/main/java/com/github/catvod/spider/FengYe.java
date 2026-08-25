@@ -25,9 +25,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import okhttp3.Request;
-import okhttp3.Response;
-
 public class FengYe extends Spider {
 
     private String siteUrl = "https://www.cd-zj.com";
@@ -35,9 +32,9 @@ public class FengYe extends Spider {
     private static String cachedSiteUrl = "";
     private static long lastCheckTime = 0;
     private Context mContext;
-    
-    // 用于保存Cookie
-    private String cookie = "";
+
+    // ========== 硬编码有效Cookie，跳过验证码 ==========
+    private static final String VALID_COOKIE = "site_entry=1; PHPSESSID=6jlt5uv9a3tplukfvtdo0mh53r; mac_verify=dede0efe86b267c6fd19096a33069e7e";
 
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
@@ -71,17 +68,16 @@ public class FengYe extends Spider {
         return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
     }
 
+    // ========== 修改 getHeaders() 直接带上有效Cookie ==========
     private Map<String, String> getHeaders() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
         h.put("Accept", ACCEPT);
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
+        h.put("Cookie", VALID_COOKIE);  // 硬编码有效Cookie，跳过验证码
         h.put("Referer", removeTrailingSlash(siteUrl) + "/");
         h.put("Cache-Control", "no-cache");
         h.put("Pragma", "no-cache");
-        if (!TextUtils.isEmpty(cookie)) {
-            h.put("Cookie", cookie);
-        }
         return h;
     }
 
@@ -119,12 +115,6 @@ public class FengYe extends Spider {
             Response response = OkHttp.newCall(request);
             if (response.isSuccessful() && response.body() != null) {
                 byte[] bytes = response.body().bytes();
-                // 保存返回的Cookie
-                String setCookie = response.header("Set-Cookie");
-                if (!TextUtils.isEmpty(setCookie)) {
-                    cookie = setCookie;
-                    System.out.println("=== fetchBytes: saved cookie=" + cookie);
-                }
                 System.out.println("=== fetchBytes: got " + bytes.length + " bytes");
                 return bytes;
             }
@@ -138,78 +128,17 @@ public class FengYe extends Spider {
         return CaptchaUtil.recognize(imgBytes, mContext);
     }
 
-    /**
-     * 验证码处理 - 手动管理Cookie
-     */
+    // ========== 简化 resolveCaptcha() ==========
     private String resolveCaptcha(String inputUrl) {
         String url = absUrl(inputUrl);
-        
-        // 先访问页面，检查是否需要验证码
         String html = fetchHtml(url);
-        if (!html.contains("系统安全验证") && !html.contains("mac_verify") && !html.contains("captcha")) {
-            System.out.println("=== resolveCaptcha: no captcha needed");
-            return html;
-        }
-
-        System.out.println("=== resolveCaptcha: captcha detected, solving...");
-
-        for (int i = 0; i < 5; i++) {
-            try {
-                // 1. 重置Cookie，重新开始
-                cookie = "";
-                
-                // 2. 获取验证码图片
-                String verifyUrl = absUrl("/captcha.php?type=code&r=" + Math.random());
-                System.out.println("=== resolveCaptcha: fetching captcha from " + verifyUrl);
-                
-                byte[] imgBytes = fetchBytes(verifyUrl);
-                if (imgBytes == null || imgBytes.length == 0) {
-                    System.out.println("=== resolveCaptcha: imgBytes null or empty");
-                    continue;
-                }
-                
-                System.out.println("=== resolveCaptcha: got " + imgBytes.length + " bytes");
-                
-                // 3. OCR识别验证码
-                String code = captchaOCR(imgBytes);
-                System.out.println("=== resolveCaptcha: OCR result = [" + code + "]");
-                
-                if (TextUtils.isEmpty(code) || code.length() != 4) {
-                    System.out.println("=== resolveCaptcha: invalid code length");
-                    continue;
-                }
-
-                // 4. 提交验证码
-                Map<String, String> params = new HashMap<>();
-                params.put("check", code);
-                
-                System.out.println("=== verify: submitting code=" + code + ", cookie=" + cookie);
-                OkResult result = OkHttp.post(absUrl("/captcha.php?type=verify"), params, getHeaders(siteUrl));
-                
-                if (result != null) {
-                    String body = result.getBody();
-                    System.out.println("=== verify response: " + body);
-                    
-                    JSONObject json = new JSONObject(body);
-                    if (json.optInt("code") == 1) {
-                        System.out.println("=== verify SUCCESS! (attempt " + (i + 1) + ")");
-                        // 验证通过后，获取数据
-                        String data = fetchHtml(url);
-                        System.out.println("=== resolveCaptcha: fetched data length=" + data.length());
-                        return data;
-                    } else {
-                        System.out.println("=== verify FAILED! (attempt " + (i + 1) + "): " + json.optString("msg"));
-                    }
-                } else {
-                    System.out.println("=== verify: OkResult is null");
-                }
-            } catch (Exception e) {
-                System.out.println("=== resolveCaptcha exception: " + e.getMessage());
-                e.printStackTrace();
-            }
+        
+        // 如果还是遇到验证码（Cookie过期），直接返回空
+        if (html.contains("系统安全验证") || html.contains("mac_verify") || html.contains("captcha")) {
+            System.out.println("=== Cookie已过期，请重新获取");
+            return "";
         }
         
-        System.out.println("=== resolveCaptcha: all attempts failed");
         return html;
     }
 
