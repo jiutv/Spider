@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import okhttp3.FormBody;
 import okhttp3.Request;
 import okhttp3.Response;
 
@@ -39,6 +40,9 @@ public class FengYe extends Spider {
     private static String cachedSiteUrl = "";
     private static long lastCheckTime = 0;
     private Context mContext;
+
+    // ========== 手动维护Cookie（关键修复）==========
+    private static String sessionCookie = "";
 
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
@@ -72,11 +76,16 @@ public class FengYe extends Spider {
         return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
     }
 
+    // ========== 关键修复：getHeaders 带上 sessionCookie ==========
     private Map<String, String> getHeaders() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
         h.put("Accept", ACCEPT);
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
+        if (!TextUtils.isEmpty(sessionCookie)) {
+            h.put("Cookie", sessionCookie);
+            System.out.println("=== [getHeaders] 带上Cookie: " + sessionCookie);
+        }
         h.put("Referer", removeTrailingSlash(siteUrl) + "/");
         h.put("Cache-Control", "no-cache");
         h.put("Pragma", "no-cache");
@@ -95,14 +104,44 @@ public class FengYe extends Spider {
         return TextUtils.isEmpty(value) ? defaultValue : value;
     }
 
+    // ========== 关键修复：从 Response 提取 Cookie ==========
+    private void extractCookies(Response response) {
+        if (response == null) return;
+        List<String> cookies = response.headers("Set-Cookie");
+        for (String c : cookies) {
+            System.out.println("=== [extractCookies] 收到: " + c);
+            updateSessionCookie(c);
+        }
+    }
+
+    // ========== 关键修复：fetchHtml 改用 newCall + 手动提取Cookie ==========
     private String fetchHtml(String url) {
         try {
             if (!url.startsWith("http")) {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
-            return OkHttp.string(url, null, getHeaders(siteUrl));
+            System.out.println("=== [fetchHtml] 请求: " + url);
+            
+            Request request = new Request.Builder()
+                    .url(url)
+                    .headers(okhttp3.Headers.of(getHeaders(siteUrl)))
+                    .build();
+            
+            Response response = OkHttp.newCall(request);
+            System.out.println("=== [fetchHtml] 响应码: " + response.code());
+            
+            // 提取Cookie
+            extractCookies(response);
+            
+            String body = "";
+            if (response.body() != null) {
+                body = response.body().string();
+            }
+            System.out.println("=== [fetchHtml] 返回HTML长度: " + body.length());
+            return body;
         } catch (Exception e) {
-            System.out.println("=== fetchHtml error: " + e.getMessage());
+            System.out.println("=== [fetchHtml] 异常: " + e.getMessage());
+            e.printStackTrace();
         }
         return "";
     }
@@ -112,90 +151,176 @@ public class FengYe extends Spider {
             if (!url.startsWith("http")) {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
+            System.out.println("=== [fetchBytes] 请求: " + url);
+            
             Request request = new Request.Builder()
                     .url(url)
                     .headers(okhttp3.Headers.of(getHeaders(siteUrl)))
                     .build();
+            
             Response response = OkHttp.newCall(request);
+            System.out.println("=== [fetchBytes] 响应码: " + response.code());
+            
+            // 提取Cookie
+            extractCookies(response);
+            
             if (response.isSuccessful() && response.body() != null) {
-                return response.body().bytes();
+                byte[] bytes = response.body().bytes();
+                System.out.println("=== [fetchBytes] 返回 " + bytes.length + " bytes");
+                return bytes;
             }
         } catch (Exception e) {
-            System.out.println("=== fetchBytes exception: " + e.getMessage());
+            System.out.println("=== [fetchBytes] 异常: " + e.getMessage());
+            e.printStackTrace();
         }
         return null;
     }
 
-    // ========== 验证码自动识别（核心）==========
+    // ========== Cookie管理 ==========
+    private void updateSessionCookie(String setCookie) {
+        try {
+            String[] parts = setCookie.split(",");
+            for (String part : parts) {
+                String[] kv = part.trim().split(";");
+                if (kv.length > 0) {
+                    String cookiePair = kv[0].trim();
+                    String[] nameValue = cookiePair.split("=", 2);
+                    if (nameValue.length == 2) {
+                        String name = nameValue[0].trim();
+                        String value = nameValue[1].trim();
+                        sessionCookie = mergeCookie(sessionCookie, name, value);
+                    }
+                }
+            }
+            System.out.println("=== [updateSessionCookie] 当前Cookie: " + sessionCookie);
+        } catch (Exception e) {
+            System.out.println("=== [updateSessionCookie] 异常: " + e.getMessage());
+        }
+    }
+
+    private String mergeCookie(String oldCookie, String name, String value) {
+        if (TextUtils.isEmpty(oldCookie)) return name + "=" + value;
+        String[] cookies = oldCookie.split(";");
+        StringBuilder sb = new StringBuilder();
+        boolean replaced = false;
+        for (String c : cookies) {
+            String[] nv = c.trim().split("=", 2);
+            if (nv.length == 2 && nv[0].trim().equals(name)) {
+                sb.append(name).append("=").append(value).append("; ");
+                replaced = true;
+            } else {
+                sb.append(c.trim()).append("; ");
+            }
+        }
+        if (!replaced) {
+            sb.append(name).append("=").append(value).append("; ");
+        }
+        String result = sb.toString();
+        if (result.endsWith("; ")) result = result.substring(0, result.length() - 2);
+        return result;
+    }
+
+    // ========== 验证码自动识别（关键修复：验证提交也用 newCall）==========
     private String resolveCaptcha(String inputUrl) {
+        System.out.println("=== [resolveCaptcha] 开始: " + inputUrl);
         String url = absUrl(inputUrl);
         String html = fetchHtml(url);
+        System.out.println("=== [resolveCaptcha] HTML长度: " + html.length());
 
-        if (!html.contains("系统安全验证") && !html.contains("mac_verify")
+        if (!html.contains("系统安全验证") && !html.contains("mac_verify") 
                 && !html.contains("captcha.php?type=code")) {
+            System.out.println("=== [resolveCaptcha] 无需验证码");
             return html;
         }
 
-        System.out.println("=== 遇到验证码，启动自动识别...");
+        System.out.println("=== [resolveCaptcha] ❌ 遇到验证码，启动识别...");
 
         for (int i = 0; i < 3; i++) {
             try {
-                // 1. 下载验证码图片
-                String captchaUrl = removeTrailingSlash(siteUrl)
+                System.out.println("=== [resolveCaptcha] 第" + (i+1) + "次尝试");
+
+                // 1. 下载验证码
+                String captchaUrl = removeTrailingSlash(siteUrl) 
                         + "/captcha.php?type=code&r=" + System.currentTimeMillis();
+                System.out.println("=== [resolveCaptcha] 下载: " + captchaUrl);
                 byte[] imgBytes = fetchBytes(captchaUrl);
+                System.out.println("=== [resolveCaptcha] 图片: " + (imgBytes != null ? imgBytes.length + " bytes" : "null"));
+
                 if (imgBytes == null || imgBytes.length == 0) {
-                    System.out.println("=== 验证码图片下载失败");
+                    System.out.println("=== [resolveCaptcha] 图片下载失败");
                     continue;
                 }
 
-                // 2. OCR识别
+                // 2. OCR
                 String code = ocrCaptchaDigits(imgBytes);
-                System.out.println("=== OCR 第" + (i + 1) + "次结果: [" + code + "]");
+                System.out.println("=== [resolveCaptcha] OCR结果: [" + code + "]");
 
                 if (code.length() != 4) {
-                    System.out.println("=== 识别结果长度不对，刷新重试");
+                    System.out.println("=== [resolveCaptcha] 长度不对(" + code.length() + ")，重试");
                     continue;
                 }
 
-                // 3. 提交验证
+                // 3. 提交验证（关键修复：用 newCall 替代 OkHttp.post）
                 String verifyUrl = removeTrailingSlash(siteUrl) + "/captcha.php?type=verify";
-                Map<String, String> postHeaders = getHeaders(url);
-                postHeaders.put("Content-Type", "application/x-www-form-urlencoded");
-                postHeaders.put("X-Requested-With", "XMLHttpRequest");
-                postHeaders.put("Origin", removeTrailingSlash(siteUrl));
-
                 String postBody = "check=" + URLEncoder.encode(code, "UTF-8");
-                OkResult result = OkHttp.post(verifyUrl, postBody, postHeaders);
+                System.out.println("=== [resolveCaptcha] 提交: " + postBody);
 
-                if (result != null && result.getCode() == 200 && result.getBody() != null) {
-                    System.out.println("=== 验证响应: " + result.getBody());
-                    JSONObject res = new JSONObject(result.getBody());
-                    if (res.optInt("code") == 1) {
-                        System.out.println("=== 验证码通过，重新请求原页面");
-                        return fetchHtml(url);
-                    } else {
-                        System.out.println("=== 验证失败: " + res.optString("msg"));
-                    }
+                Request postRequest = new Request.Builder()
+                        .url(verifyUrl)
+                        .post(okhttp3.RequestBody.create(
+                                okhttp3.MediaType.parse("application/x-www-form-urlencoded"), 
+                                postBody))
+                        .headers(okhttp3.Headers.of(getHeaders(url)))
+                        .addHeader("X-Requested-With", "XMLHttpRequest")
+                        .addHeader("Origin", removeTrailingSlash(siteUrl))
+                        .build();
+
+                Response postResponse = OkHttp.newCall(postRequest);
+                System.out.println("=== [resolveCaptcha] 响应码: " + postResponse.code());
+                
+                // 关键：提取验证后的 mac_verify
+                extractCookies(postResponse);
+
+                String body = "";
+                if (postResponse.body() != null) {
+                    body = postResponse.body().string();
+                }
+                System.out.println("=== [resolveCaptcha] 响应体: " + body);
+
+                JSONObject res = new JSONObject(body);
+                if (res.optInt("code") == 1) {
+                    System.out.println("=== [resolveCaptcha] ✅ 验证通过，重试页面");
+                    time.sleep(500); // 模拟JS的setTimeout
+                    String retryHtml = fetchHtml(url);
+                    System.out.println("=== [resolveCaptcha] 重试后长度: " + retryHtml.length());
+                    System.out.println("=== [resolveCaptcha] 重试后还有验证码: " + retryHtml.contains("系统安全验证"));
+                    return retryHtml;
+                } else {
+                    System.out.println("=== [resolveCaptcha] ❌ 验证失败: " + res.optString("msg"));
                 }
             } catch (Exception e) {
-                System.out.println("=== 验证码处理异常: " + e.getMessage());
+                System.out.println("=== [resolveCaptcha] 第" + (i+1) + "次异常: " + e.getMessage());
+                e.printStackTrace();
             }
         }
 
-        System.out.println("=== 验证码自动识别失败，返回空");
+        System.out.println("=== [resolveCaptcha] 3次失败，返回空");
         return "";
     }
 
     private String ocrCaptchaDigits(byte[] imgBytes) {
         try {
+            System.out.println("=== [OCR] 解码图片...");
             Bitmap bmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.length);
-            if (bmp == null) return "";
+            if (bmp == null) {
+                System.out.println("=== [OCR] decodeByteArray返回null");
+                return "";
+            }
+            System.out.println("=== [OCR] 图片尺寸: " + bmp.getWidth() + "x" + bmp.getHeight());
 
             int w = bmp.getWidth();
             int h = bmp.getHeight();
 
-            // 灰度化
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
             long sum = 0;
@@ -206,8 +331,8 @@ public class FengYe extends Spider {
                 sum += (r * 299 + g * 587 + b * 114) / 1000;
             }
             int threshold = (int) (sum / (w * h) * 0.85);
+            System.out.println("=== [OCR] 阈值: " + threshold);
 
-            // 二值化 + 放大3倍
             int scale = 3;
             Bitmap scaled = Bitmap.createBitmap(w * scale, h * scale, Bitmap.Config.ARGB_8888);
             for (int y = 0; y < h; y++) {
@@ -225,27 +350,31 @@ public class FengYe extends Spider {
                 }
             }
 
-            // Tesseract OCR
+            System.out.println("=== [OCR] Tesseract初始化...");
             TessBaseAPI tess = new TessBaseAPI();
             String dataPath = mContext.getFilesDir().getAbsolutePath();
-            tess.init(dataPath, "eng");
+            System.out.println("=== [OCR] dataPath: " + dataPath);
+            boolean initOk = tess.init(dataPath, "eng");
+            System.out.println("=== [OCR] init结果: " + initOk);
+            
             tess.setVariable("tessedit_char_whitelist", "0123456789");
             tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
             tess.setImage(scaled);
-
+            
             String text = tess.getUTF8Text();
             tess.end();
+            System.out.println("=== [OCR] 原始结果: '" + text + "'");
 
             if (text != null) {
                 return text.replaceAll("[^0-9]", "").trim();
             }
         } catch (Exception e) {
-            System.out.println("=== OCR 异常: " + e.getMessage());
+            System.out.println("=== [OCR] 异常: " + e.getMessage());
+            e.printStackTrace();
         }
         return "";
     }
 
-    // ========== 解析列表（适配分类页+搜索页）==========
     private ArrayList<Vod> parseList(String html) {
         ArrayList<Vod> list = new ArrayList<>();
         LinkedHashSet<String> idSet = new LinkedHashSet<>();
@@ -258,14 +387,11 @@ public class FengYe extends Spider {
                 String id = matcher.group(1);
                 if (idSet.add(id)) {
                     Element img = item.selectFirst("img");
-                    // 搜索页用alt更稳，分类页用title
                     String name = "";
                     if (img != null) {
                         name = img.attr("alt");
                         if (TextUtils.isEmpty(name)) name = img.attr("title");
                     }
-
-                    // 分类页用data-src，搜索页可能直接用src
                     String pic = img != null ? fixPic(img.attr("data-src")) : "";
                     if (TextUtils.isEmpty(pic) && img != null) {
                         pic = fixPic(img.attr("src"));
@@ -310,6 +436,17 @@ public class FengYe extends Spider {
     public void init(Context context, String extend) throws Exception {
         this.mContext = context;
         CaptchaUtil.initTessData(context);
+
+        // 测试Tesseract
+        try {
+            TessBaseAPI testTess = new TessBaseAPI();
+            String dataPath = context.getFilesDir().getAbsolutePath();
+            boolean ok = testTess.init(dataPath, "eng");
+            System.out.println("=== [init] Tesseract测试: " + ok);
+            testTess.end();
+        } catch (Exception e) {
+            System.out.println("=== [init] Tesseract测试失败: " + e.getMessage());
+        }
 
         this.siteUrl = "https://www.cd-zj.com";
         this.backupUrl = "https://www.vip1949.com/";
@@ -480,7 +617,6 @@ public class FengYe extends Spider {
                 if (m.find()) {
                     String epName = link.text().trim();
                     if (TextUtils.isEmpty(epName)) epName = "正片";
-                    // ========== 修复：去掉多余的 id + "/" 前缀 ==========
                     episodes.add(epName + "$" + m.group(1));
                 }
             }
@@ -509,7 +645,6 @@ public class FengYe extends Spider {
         if (TextUtils.isEmpty(id)) return Result.error("播放ID为空");
         String vid = id.trim();
         if (vid.contains("$")) vid = vid.substring(vid.lastIndexOf("$") + 1);
-        // 兜底：防止异常ID带斜杠
         if (vid.contains("/")) vid = vid.substring(vid.lastIndexOf("/") + 1);
 
         if (TextUtils.isEmpty(vid)) return Result.error("播放ID为空");
@@ -555,7 +690,6 @@ public class FengYe extends Spider {
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         String keyword = key == null ? "" : key.trim();
-        // ========== 修复：搜索URL格式 ==========
         String url = "/cupfox-search/------------" + URLEncoder.encode(keyword, "UTF-8")
                    + "----------" + pg + "---.html";
         
@@ -563,8 +697,6 @@ public class FengYe extends Spider {
         ArrayList<Vod> list = parseList(html);
 
         int page = Integer.parseInt(pg);
-        
-        // ========== 修复：解析真实分页 ==========
         int totalPage = page;
         Document doc = Jsoup.parse(html);
         Elements pageLinks = doc.select("a.page-link");
@@ -576,7 +708,6 @@ public class FengYe extends Spider {
         }
         if (list.isEmpty()) totalPage = page;
 
-        // 从JS常量获取总结果数
         int totalCount = list.size();
         Matcher countM = PATTERN_SEARCH_COUNT.matcher(html);
         if (countM.find()) {
