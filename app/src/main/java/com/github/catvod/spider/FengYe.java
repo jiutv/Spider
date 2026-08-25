@@ -28,47 +28,24 @@ import java.util.regex.Pattern;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/**
- * FengYe 爬虫 - 适配 lushunming/AndroidCatVodSpider
- * 原站点: https://www.cd-zj.com / https://www.vip1949.com/
- * 功能: 电影/电视剧/动漫/综艺/短剧 视频资源爬取
- * 验证码: 本地 Tesseract OCR（纯数字4位）
- */
 public class FengYe extends Spider {
 
-    // ========== 站点配置 ==========
-
-    /** 主站点地址 */
     private String siteUrl = "https://www.cd-zj.com";
-    /** 备用站点地址 */
     private String backupUrl = "https://www.vip1949.com/";
-    /** 缓存的可用站点 */
     private static String cachedSiteUrl = "";
-    /** 上次检测时间 */
     private static long lastCheckTime = 0;
-
-    /** Android Context（用于本地 OCR） */
     private Context mContext;
 
-    // ========== 常量 ==========
-
-    /** User-Agent */
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    /** Accept */
     private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
 
-    /** 分类过滤 JSON */
     private static final String FILTER_JSON = "{\"2\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"2\"},{\"n\":\"国产剧\",\"v\":\"13\"},{\"n\":\"日韩剧\",\"v\":\"15\"},{\"n\":\"海外剧\",\"v\":\"16\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"1\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"1\"},{\"n\":\"动作片\",\"v\":\"6\"},{\"n\":\"喜剧片\",\"v\":\"7\"},{\"n\":\"恐怖片\",\"v\":\"8\"},{\"n\":\"科幻片\",\"v\":\"9\"},{\"n\":\"爱情片\",\"v\":\"10\"},{\"n\":\"剧情片\",\"v\":\"11\"},{\"n\":\"战争片\",\"v\":\"12\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"4\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"4\"},{\"n\":\"国产动漫\",\"v\":\"25\"},{\"n\":\"日韩动漫\",\"v\":\"26\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"3\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"3\"},{\"n\":\"大陆综艺\",\"v\":\"21\"},{\"n\":\"日韩综艺\",\"v\":\"22\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}]}";
 
-    // ========== 正则 ==========
-
-    private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\d+)\.html");
-    private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\.html");
-    private static final Pattern PATTERN_PAGE = Pattern.compile("---(\d+)---");
+    private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
+    private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
+    private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
     private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
-    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te="(.*?)"");
-
-    // ========== 工具方法 ==========
+    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
 
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
@@ -124,9 +101,6 @@ public class FengYe extends Spider {
         return "";
     }
 
-    /**
-     * ===== 修复：使用 Response.body().bytes() 获取原始二进制数据 =====
-     */
     private byte[] fetchBytes(String url) {
         try {
             if (!url.startsWith("http")) {
@@ -241,8 +215,6 @@ public class FengYe extends Spider {
         return false;
     }
 
-    // ========== Spider 接口实现 ==========
-
     @Override
     public void init(Context context, String extend) throws Exception {
         this.mContext = context;
@@ -277,7 +249,7 @@ public class FengYe extends Spider {
             String body = OkHttp.string(testUrl, null, getHeaders(defaultUrl));
             if (!TextUtils.isEmpty(body)) {
                 ArrayList<String> candidates = new ArrayList<>();
-                Matcher m = Pattern.compile("<a[^>]+href="(https?://[^"]+)"[^>]*>").matcher(body);
+                Matcher m = Pattern.compile("<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>").matcher(body);
                 while (m.find()) {
                     String url = removeTrailingSlash(m.group(1));
                     if (!TextUtils.isEmpty(url) && !candidates.contains(url)) {
@@ -338,7 +310,7 @@ public class FengYe extends Spider {
         String genre = getOrDefault(extend, "genre", "");
         String lang = getOrDefault(extend, "lang", "");
         String letter = getOrDefault(extend, "letter", "");
-        String sort = getOrDefault(extend,extend, "sort", "");
+        String sort = getOrDefault(extend, "sort", "");
 
         if (!area.isEmpty() || !genre.isEmpty() || !lang.isEmpty() || !letter.isEmpty() || !sort.isEmpty()) {
             StringBuilder sb = new StringBuilder();
