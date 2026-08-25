@@ -1,6 +1,9 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.text.TextUtils;
 
 import com.github.catvod.bean.Class;
@@ -9,6 +12,7 @@ import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.net.OkResult;
+import com.googlecode.tesseract.android.TessBaseAPI;
 
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
@@ -36,9 +40,6 @@ public class FengYe extends Spider {
     private static long lastCheckTime = 0;
     private Context mContext;
 
-    // ========== 硬编码有效Cookie，跳过验证码 ==========
-    private static final String VALID_COOKIE = "site_entry=1; PHPSESSID=6jlt5uv9a3tplukfvtdo0mh53r; mac_verify=dede0efe86b267c6fd19096a33069e7e";
-
     private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
 
@@ -48,7 +49,7 @@ public class FengYe extends Spider {
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
     private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
     private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
-    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
+    private static final Pattern PATTERN_SEARCH_COUNT = Pattern.compile("const MY_CONSTANT\\s*=\\s*(\\d+)");
 
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
@@ -71,13 +72,11 @@ public class FengYe extends Spider {
         return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
     }
 
-    // ========== 修改 getHeaders() 直接带上有效Cookie ==========
     private Map<String, String> getHeaders() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
         h.put("Accept", ACCEPT);
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
-        h.put("Cookie", VALID_COOKIE);  // 硬编码有效Cookie，跳过验证码
         h.put("Referer", removeTrailingSlash(siteUrl) + "/");
         h.put("Cache-Control", "no-cache");
         h.put("Pragma", "no-cache");
@@ -102,7 +101,9 @@ public class FengYe extends Spider {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
             return OkHttp.string(url, null, getHeaders(siteUrl));
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.out.println("=== fetchHtml error: " + e.getMessage());
+        }
         return "";
     }
 
@@ -117,9 +118,7 @@ public class FengYe extends Spider {
                     .build();
             Response response = OkHttp.newCall(request);
             if (response.isSuccessful() && response.body() != null) {
-                byte[] bytes = response.body().bytes();
-                System.out.println("=== fetchBytes: got " + bytes.length + " bytes");
-                return bytes;
+                return response.body().bytes();
             }
         } catch (Exception e) {
             System.out.println("=== fetchBytes exception: " + e.getMessage());
@@ -127,24 +126,126 @@ public class FengYe extends Spider {
         return null;
     }
 
-    private String captchaOCR(byte[] imgBytes) {
-        return CaptchaUtil.recognize(imgBytes, mContext);
-    }
-
-    // ========== 简化 resolveCaptcha() ==========
+    // ========== 验证码自动识别（核心）==========
     private String resolveCaptcha(String inputUrl) {
         String url = absUrl(inputUrl);
         String html = fetchHtml(url);
-        
-        // 如果还是遇到验证码（Cookie过期），直接返回空
-        if (html.contains("系统安全验证") || html.contains("mac_verify") || html.contains("captcha")) {
-            System.out.println("=== Cookie已过期，请重新获取");
-            return "";
+
+        if (!html.contains("系统安全验证") && !html.contains("mac_verify")
+                && !html.contains("captcha.php?type=code")) {
+            return html;
         }
-        
-        return html;
+
+        System.out.println("=== 遇到验证码，启动自动识别...");
+
+        for (int i = 0; i < 3; i++) {
+            try {
+                // 1. 下载验证码图片
+                String captchaUrl = removeTrailingSlash(siteUrl)
+                        + "/captcha.php?type=code&r=" + System.currentTimeMillis();
+                byte[] imgBytes = fetchBytes(captchaUrl);
+                if (imgBytes == null || imgBytes.length == 0) {
+                    System.out.println("=== 验证码图片下载失败");
+                    continue;
+                }
+
+                // 2. OCR识别
+                String code = ocrCaptchaDigits(imgBytes);
+                System.out.println("=== OCR 第" + (i + 1) + "次结果: [" + code + "]");
+
+                if (code.length() != 4) {
+                    System.out.println("=== 识别结果长度不对，刷新重试");
+                    continue;
+                }
+
+                // 3. 提交验证
+                String verifyUrl = removeTrailingSlash(siteUrl) + "/captcha.php?type=verify";
+                Map<String, String> postHeaders = getHeaders(url);
+                postHeaders.put("Content-Type", "application/x-www-form-urlencoded");
+                postHeaders.put("X-Requested-With", "XMLHttpRequest");
+                postHeaders.put("Origin", removeTrailingSlash(siteUrl));
+
+                String postBody = "check=" + URLEncoder.encode(code, "UTF-8");
+                OkResult result = OkHttp.post(verifyUrl, postBody, postHeaders);
+
+                if (result != null && result.getCode() == 200 && result.getBody() != null) {
+                    System.out.println("=== 验证响应: " + result.getBody());
+                    JSONObject res = new JSONObject(result.getBody());
+                    if (res.optInt("code") == 1) {
+                        System.out.println("=== 验证码通过，重新请求原页面");
+                        return fetchHtml(url);
+                    } else {
+                        System.out.println("=== 验证失败: " + res.optString("msg"));
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("=== 验证码处理异常: " + e.getMessage());
+            }
+        }
+
+        System.out.println("=== 验证码自动识别失败，返回空");
+        return "";
     }
 
+    private String ocrCaptchaDigits(byte[] imgBytes) {
+        try {
+            Bitmap bmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.length);
+            if (bmp == null) return "";
+
+            int w = bmp.getWidth();
+            int h = bmp.getHeight();
+
+            // 灰度化
+            int[] pixels = new int[w * h];
+            bmp.getPixels(pixels, 0, w, 0, 0, w, h);
+            long sum = 0;
+            for (int p : pixels) {
+                int r = (p >> 16) & 0xff;
+                int g = (p >> 8) & 0xff;
+                int b = p & 0xff;
+                sum += (r * 299 + g * 587 + b * 114) / 1000;
+            }
+            int threshold = (int) (sum / (w * h) * 0.85);
+
+            // 二值化 + 放大3倍
+            int scale = 3;
+            Bitmap scaled = Bitmap.createBitmap(w * scale, h * scale, Bitmap.Config.ARGB_8888);
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int p = pixels[y * w + x];
+                    int gray = ((p >> 16) & 0xff) * 299 / 1000
+                             + ((p >> 8) & 0xff) * 587 / 1000
+                             + (p & 0xff) * 114 / 1000;
+                    int color = (gray < threshold) ? Color.BLACK : Color.WHITE;
+                    for (int dy = 0; dy < scale; dy++) {
+                        for (int dx = 0; dx < scale; dx++) {
+                            scaled.setPixel(x * scale + dx, y * scale + dy, color);
+                        }
+                    }
+                }
+            }
+
+            // Tesseract OCR
+            TessBaseAPI tess = new TessBaseAPI();
+            String dataPath = mContext.getFilesDir().getAbsolutePath();
+            tess.init(dataPath, "eng");
+            tess.setVariable("tessedit_char_whitelist", "0123456789");
+            tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
+            tess.setImage(scaled);
+
+            String text = tess.getUTF8Text();
+            tess.end();
+
+            if (text != null) {
+                return text.replaceAll("[^0-9]", "").trim();
+            }
+        } catch (Exception e) {
+            System.out.println("=== OCR 异常: " + e.getMessage());
+        }
+        return "";
+    }
+
+    // ========== 解析列表（适配分类页+搜索页）==========
     private ArrayList<Vod> parseList(String html) {
         ArrayList<Vod> list = new ArrayList<>();
         LinkedHashSet<String> idSet = new LinkedHashSet<>();
@@ -157,14 +258,20 @@ public class FengYe extends Spider {
                 String id = matcher.group(1);
                 if (idSet.add(id)) {
                     Element img = item.selectFirst("img");
+                    // 搜索页用alt更稳，分类页用title
                     String name = "";
                     if (img != null) {
-                        name = img.attr("title");
-                        if (TextUtils.isEmpty(name)) name = img.attr("alt");
+                        name = img.attr("alt");
+                        if (TextUtils.isEmpty(name)) name = img.attr("title");
                     }
-                    String pic = img != null ? fixPic(img.attr("data-src")) : "";
 
-                    Element remarkEl = item.selectFirst(".ft2, .public-list-prb");
+                    // 分类页用data-src，搜索页可能直接用src
+                    String pic = img != null ? fixPic(img.attr("data-src")) : "";
+                    if (TextUtils.isEmpty(pic) && img != null) {
+                        pic = fixPic(img.attr("src"));
+                    }
+
+                    Element remarkEl = item.selectFirst(".public-list-prb, .ft2");
                     String remark = remarkEl != null ? remarkEl.text() : "";
 
                     Element typeEl = item.selectFirst("span.public-prt");
@@ -399,12 +506,10 @@ public class FengYe extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        String ua = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-
         if (TextUtils.isEmpty(id)) return Result.error("播放ID为空");
         String vid = id.trim();
         if (vid.contains("$")) vid = vid.substring(vid.lastIndexOf("$") + 1);
-        // ========== 修复：兜底处理，防止异常 ID 带斜杠 ==========
+        // 兜底：防止异常ID带斜杠
         if (vid.contains("/")) vid = vid.substring(vid.lastIndexOf("/") + 1);
 
         if (TextUtils.isEmpty(vid)) return Result.error("播放ID为空");
@@ -429,7 +534,6 @@ public class FengYe extends Spider {
         try {
             JSONObject json = new JSONObject(m.group(1));
             String url = json.optString("url");
-            String from = json.optString("from");
 
             if (TextUtils.isEmpty(url)) return Result.error("无播放地址");
 
@@ -451,12 +555,34 @@ public class FengYe extends Spider {
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         String keyword = key == null ? "" : key.trim();
-        String url = "/cupfox-search/" + URLEncoder.encode(keyword, "UTF-8") + "----------" + pg + ".html";
+        // ========== 修复：搜索URL格式 ==========
+        String url = "/cupfox-search/------------" + URLEncoder.encode(keyword, "UTF-8")
+                   + "----------" + pg + "---.html";
+        
         String html = resolveCaptcha(url);
-
         ArrayList<Vod> list = parseList(html);
 
         int page = Integer.parseInt(pg);
-        return Result.string(page, 1, 36, list.size(), list);
+        
+        // ========== 修复：解析真实分页 ==========
+        int totalPage = page;
+        Document doc = Jsoup.parse(html);
+        Elements pageLinks = doc.select("a.page-link");
+        for (Element el : pageLinks) {
+            if ("尾页".equals(el.text())) {
+                Matcher m = PATTERN_PAGE.matcher(el.attr("href"));
+                if (m.find()) totalPage = Integer.parseInt(m.group(1));
+            }
+        }
+        if (list.isEmpty()) totalPage = page;
+
+        // 从JS常量获取总结果数
+        int totalCount = list.size();
+        Matcher countM = PATTERN_SEARCH_COUNT.matcher(html);
+        if (countM.find()) {
+            totalCount = Integer.parseInt(countM.group(1));
+        }
+
+        return Result.string(page, totalPage, 36, totalCount, list);
     }
 }
