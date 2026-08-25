@@ -25,6 +25,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import okhttp3.Request;
+import okhttp3.Response;
+
 /**
  * FengYe 爬虫 - 适配 lushunming/AndroidCatVodSpider
  * 原站点: https://www.cd-zj.com / https://www.vip1949.com/
@@ -59,17 +62,14 @@ public class FengYe extends Spider {
 
     // ========== 正则 ==========
 
-    private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
-    private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
-    private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
+    private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\d+)\.html");
+    private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\.html");
+    private static final Pattern PATTERN_PAGE = Pattern.compile("---(\d+)---");
     private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
-    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
+    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te="(.*?)"");
 
     // ========== 工具方法 ==========
 
-    /**
-     * 处理图片地址
-     */
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
         if (pic.startsWith("//")) return "https:" + pic;
@@ -77,9 +77,6 @@ public class FengYe extends Spider {
         return pic;
     }
 
-    /**
-     * 去除末尾斜杠
-     */
     private String removeTrailingSlash(String str) {
         if (TextUtils.isEmpty(str)) return str;
         while (str.endsWith("/")) {
@@ -88,18 +85,12 @@ public class FengYe extends Spider {
         return str;
     }
 
-    /**
-     * 构建绝对 URL
-     */
     private String absUrl(String str) {
         if (TextUtils.isEmpty(str)) return removeTrailingSlash(siteUrl) + "/";
         if (str.startsWith("http")) return str;
         return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
     }
 
-    /**
-     * 获取默认请求头
-     */
     private Map<String, String> getHeaders() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
@@ -111,27 +102,18 @@ public class FengYe extends Spider {
         return h;
     }
 
-    /**
-     * 获取带指定 Referer 的请求头
-     */
     private Map<String, String> getHeaders(String referer) {
         Map<String, String> h = getHeaders();
         h.put("Referer", removeTrailingSlash(referer) + "/");
         return h;
     }
 
-    /**
-     * 获取 HashMap 值，为空则返回默认值
-     */
     private String getOrDefault(HashMap<String, String> map, String key, String defaultValue) {
         if (map == null) return defaultValue;
         String value = map.get(key);
         return TextUtils.isEmpty(value) ? defaultValue : value;
     }
 
-    /**
-     * 获取页面 HTML
-     */
     private String fetchHtml(String url) {
         try {
             if (!url.startsWith("http")) {
@@ -143,31 +125,33 @@ public class FengYe extends Spider {
     }
 
     /**
-     * 获取验证码图片字节数组
+     * ===== 修复：使用 Response.body().bytes() 获取原始二进制数据 =====
      */
     private byte[] fetchBytes(String url) {
         try {
             if (!url.startsWith("http")) {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
-            OkResult result = OkHttp.get(url, null, getHeaders(siteUrl));
-            if (result != null && result.getBody() != null) {
-                return result.getBody().getBytes();
+            Request request = new Request.Builder()
+                    .url(url)
+                    .headers(okhttp3.Headers.of(getHeaders(siteUrl)))
+                    .build();
+            Response response = OkHttp.newCall(request);
+            if (response.isSuccessful() && response.body() != null) {
+                byte[] bytes = response.body().bytes();
+                System.out.println("=== fetchBytes: got " + bytes.length + " bytes");
+                return bytes;
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.out.println("=== fetchBytes exception: " + e.getMessage());
+        }
         return null;
     }
 
-    /**
-     * 本地 Tesseract OCR 识别验证码
-     */
     private String captchaOCR(byte[] imgBytes) {
         return CaptchaUtil.recognize(imgBytes, mContext);
     }
 
-    /**
-     * 处理验证码拦截
-     */
     private String resolveCaptcha(String inputUrl) {
         String url = absUrl(inputUrl);
         String html = fetchHtml(url);
@@ -180,6 +164,10 @@ public class FengYe extends Spider {
             try {
                 String verifyUrl = absUrl("/captcha.php?type=code&r=" + Math.random());
                 byte[] imgBytes = fetchBytes(verifyUrl);
+                if (imgBytes == null || imgBytes.length == 0) {
+                    System.out.println("=== resolveCaptcha: fetchBytes returned null");
+                    continue;
+                }
                 String code = captchaOCR(imgBytes);
                 if (TextUtils.isEmpty(code) || code.length() != 4) continue;
 
@@ -192,14 +180,13 @@ public class FengYe extends Spider {
                         return fetchHtml(url);
                     }
                 }
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
         return html;
     }
 
-    /**
-     * 解析视频列表
-     */
     private ArrayList<Vod> parseList(String html) {
         ArrayList<Vod> list = new ArrayList<>();
         LinkedHashSet<String> idSet = new LinkedHashSet<>();
@@ -234,9 +221,6 @@ public class FengYe extends Spider {
         return list;
     }
 
-    /**
-     * 检测站点是否可用
-     */
     private boolean isSiteOnline(String str) {
         String url = removeTrailingSlash(str);
         String[] urls = {url, url + "/cupfox-list/1--------1---.html"};
@@ -293,7 +277,7 @@ public class FengYe extends Spider {
             String body = OkHttp.string(testUrl, null, getHeaders(defaultUrl));
             if (!TextUtils.isEmpty(body)) {
                 ArrayList<String> candidates = new ArrayList<>();
-                Matcher m = Pattern.compile("<a[^>]+href=\"(https?://[^\"]+)\"[^>]*>").matcher(body);
+                Matcher m = Pattern.compile("<a[^>]+href="(https?://[^"]+)"[^>]*>").matcher(body);
                 while (m.find()) {
                     String url = removeTrailingSlash(m.group(1));
                     if (!TextUtils.isEmpty(url) && !candidates.contains(url)) {
@@ -354,7 +338,7 @@ public class FengYe extends Spider {
         String genre = getOrDefault(extend, "genre", "");
         String lang = getOrDefault(extend, "lang", "");
         String letter = getOrDefault(extend, "letter", "");
-        String sort = getOrDefault(extend, "sort", "");
+        String sort = getOrDefault(extend,extend, "sort", "");
 
         if (!area.isEmpty() || !genre.isEmpty() || !lang.isEmpty() || !letter.isEmpty() || !sort.isEmpty()) {
             StringBuilder sb = new StringBuilder();
