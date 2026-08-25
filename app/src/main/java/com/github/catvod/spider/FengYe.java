@@ -47,7 +47,8 @@ public class FengYe extends Spider {
     private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
     private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
-    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=({.*?});", Pattern.DOTALL);
+    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
+    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
 
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
@@ -70,12 +71,13 @@ public class FengYe extends Spider {
         return removeTrailingSlash(siteUrl) + (str.startsWith("/") ? str : "/" + str);
     }
 
+    // ========== 修改 getHeaders() 直接带上有效Cookie ==========
     private Map<String, String> getHeaders() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
         h.put("Accept", ACCEPT);
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
-        h.put("Cookie", VALID_COOKIE);
+        h.put("Cookie", VALID_COOKIE);  // 硬编码有效Cookie，跳过验证码
         h.put("Referer", removeTrailingSlash(siteUrl) + "/");
         h.put("Cache-Control", "no-cache");
         h.put("Pragma", "no-cache");
@@ -100,9 +102,7 @@ public class FengYe extends Spider {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
             return OkHttp.string(url, null, getHeaders(siteUrl));
-        } catch (Exception e) {
-            System.out.println("=== fetchHtml exception: " + e.getMessage());
-        }
+        } catch (Exception e) {}
         return "";
     }
 
@@ -131,13 +131,17 @@ public class FengYe extends Spider {
         return CaptchaUtil.recognize(imgBytes, mContext);
     }
 
+    // ========== 简化 resolveCaptcha() ==========
     private String resolveCaptcha(String inputUrl) {
         String url = absUrl(inputUrl);
         String html = fetchHtml(url);
+        
+        // 如果还是遇到验证码（Cookie过期），直接返回空
         if (html.contains("系统安全验证") || html.contains("mac_verify") || html.contains("captcha")) {
             System.out.println("=== Cookie已过期，请重新获取");
             return "";
         }
+        
         return html;
     }
 
@@ -369,7 +373,8 @@ public class FengYe extends Spider {
                 if (m.find()) {
                     String epName = link.text().trim();
                     if (TextUtils.isEmpty(epName)) epName = "正片";
-                    episodes.add(epName + "$" + id + "/" + m.group(1));
+                    // ========== 修复：去掉多余的 id + "/" 前缀 ==========
+                    episodes.add(epName + "$" + m.group(1));
                 }
             }
             if (!episodes.isEmpty() && i < sources.size()) {
@@ -392,12 +397,16 @@ public class FengYe extends Spider {
         return Result.string(vod);
     }
 
-    // ========== 只改 playerContent 方法 ==========
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
+        String ua = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+
         if (TextUtils.isEmpty(id)) return Result.error("播放ID为空");
         String vid = id.trim();
         if (vid.contains("$")) vid = vid.substring(vid.lastIndexOf("$") + 1);
+        // ========== 修复：兜底处理，防止异常 ID 带斜杠 ==========
+        if (vid.contains("/")) vid = vid.substring(vid.lastIndexOf("/") + 1);
+
         if (TextUtils.isEmpty(vid)) return Result.error("播放ID为空");
 
         String playUrl;
@@ -407,53 +416,31 @@ public class FengYe extends Spider {
             playUrl = vid;
         }
 
-        System.out.println("=== playerContent: playUrl=" + playUrl);
-
         String html = fetchHtml(playUrl);
         if (TextUtils.isEmpty(html)) {
             return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
         }
 
-        // 提取 player_aaaa
         Matcher m = PATTERN_PLAYER_AAAA.matcher(html);
-        if (m.find()) {
-            try {
-                String jsonStr = m.group(1);
-                System.out.println("=== playerContent: found=" + jsonStr);
-                JSONObject json = new JSONObject(jsonStr);
-                String url = json.optString("url");
-                System.out.println("=== playerContent: url=" + url);
-                
-                if (!TextUtils.isEmpty(url) && url.startsWith("http")) {
-                    return Result.get().url(url).parse(0).header(getHeaders()).string();
-                }
-            } catch (Exception e) {
-                System.out.println("=== playerContent: parse error=" + e.getMessage());
-            }
+        if (!m.find()) {
+            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
         }
 
-        // 备用方案
         try {
-            int start = html.indexOf("player_aaaa=");
-            if (start != -1) {
-                int end = html.indexOf("</script>", start);
-                if (end != -1) {
-                    String jsonStr = html.substring(start + 12, end).trim();
-                    if (jsonStr.endsWith(";")) {
-                        jsonStr = jsonStr.substring(0, jsonStr.length() - 1);
-                    }
-                    JSONObject json = new JSONObject(jsonStr);
-                    String url = json.optString("url");
-                    if (!TextUtils.isEmpty(url) && url.startsWith("http")) {
-                        return Result.get().url(url).parse(0).header(getHeaders()).string();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("=== playerContent: fallback error=" + e.getMessage());
-        }
+            JSONObject json = new JSONObject(m.group(1));
+            String url = json.optString("url");
+            String from = json.optString("from");
 
-        return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
+            if (TextUtils.isEmpty(url)) return Result.error("无播放地址");
+
+            if (url.startsWith("http") && (url.contains(".m3u8") || url.contains(".mp4"))) {
+                return Result.get().url(url).parse(0).header(getHeaders()).string();
+            }
+
+            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
+        } catch (Exception e) {
+            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
+        }
     }
 
     @Override
