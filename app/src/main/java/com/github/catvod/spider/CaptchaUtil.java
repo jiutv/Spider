@@ -8,6 +8,7 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import java.util.ArrayList;  // ← 添加了这一行
 
 /**
  * 纯 Java 实现的轻量级 OCR 验证码识别 V2
