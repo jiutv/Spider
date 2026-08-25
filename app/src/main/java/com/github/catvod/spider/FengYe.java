@@ -39,16 +39,15 @@ public class FengYe extends Spider {
     // ========== 硬编码有效Cookie，跳过验证码 ==========
     private static final String VALID_COOKIE = "site_entry=1; PHPSESSID=6jlt5uv9a3tplukfvtdo0mh53r; mac_verify=dede0efe86b267c6fd19096a33069e7e";
 
-    private static final String UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-    private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+    private static final String UA = "Mozilla/5.0 (Linux; Android 16; V2364A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36";
+    private static final String ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
 
     private static final String FILTER_JSON = "{\"2\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"2\"},{\"n\":\"国产剧\",\"v\":\"13\"},{\"n\":\"日韩剧\",\"v\":\"15\"},{\"n\":\"海外剧\",\"v\":\"16\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"1\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"1\"},{\"n\":\"动作片\",\"v\":\"6\"},{\"n\":\"喜剧片\",\"v\":\"7\"},{\"n\":\"恐怖片\",\"v\":\"8\"},{\"n\":\"科幻片\",\"v\":\"9\"},{\"n\":\"爱情片\",\"v\":\"10\"},{\"n\":\"剧情片\",\"v\":\"11\"},{\"n\":\"战争片\",\"v\":\"12\"}]},{\"key\":\"area\",\"name\":\"地区\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"大陆\",\"v\":\"大陆\"},{\"n\":\"香港\",\"v\":\"香港\"},{\"n\":\"台湾\",\"v\":\"台湾\"},{\"n\":\"美国\",\"v\":\"美国\"},{\"n\":\"韩国\",\"v\":\"韩国\"},{\"n\":\"日本\",\"v\":\"日本\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"},{\"n\":\"2023\",\"v\":\"2023\"},{\"n\":\"2022\",\"v\":\"2022\"},{\"n\":\"2021\",\"v\":\"2021\"},{\"n\":\"2020\",\"v\":\"2020\"}]},{\"key\":\"lang\",\"name\":\"语言\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"国语\",\"v\":\"国语\"},{\"n\":\"英语\",\"v\":\"英语\"},{\"n\":\"粤语\",\"v\":\"粤语\"}]},{\"key\":\"letter\",\"name\":\"字母\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"A\",\"v\":\"A\"},{\"n\":\"B\",\"v\":\"B\"},{\"n\":\"C\",\"v\":\"C\"},{\"n\":\"D\",\"v\":\"D\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"4\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"4\"},{\"n\":\"国产动漫\",\"v\":\"25\"},{\"n\":\"日韩动漫\",\"v\":\"26\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}],\"3\":[{\"key\":\"class\",\"name\":\"类型\",\"value\":[{\"n\":\"全部\",\"v\":\"3\"},{\"n\":\"大陆综艺\",\"v\":\"21\"},{\"n\":\"日韩综艺\",\"v\":\"22\"}]},{\"key\":\"year\",\"name\":\"年份\",\"value\":[{\"n\":\"全部\",\"v\":\"\"},{\"n\":\"2026\",\"v\":\"2026\"},{\"n\":\"2025\",\"v\":\"2025\"},{\"n\":\"2024\",\"v\":\"2024\"}]},{\"key\":\"sort\",\"name\":\"排序\",\"value\":[{\"n\":\"时间\",\"v\":\"time\"},{\"n\":\"人气\",\"v\":\"hits\"},{\"n\":\"评分\",\"v\":\"score\"}]}]}";
 
     private static final Pattern PATTERN_DETAIL_ID = Pattern.compile("/detail/(\\d+)\\.html");
     private static final Pattern PATTERN_PLAY_ID = Pattern.compile("/play/(.*?)\\.html");
     private static final Pattern PATTERN_PAGE = Pattern.compile("---(\\d+)---");
-    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=(.*?)</script>", Pattern.DOTALL);
-    private static final Pattern PATTERN_DATA_TE = Pattern.compile("data-te=\"(.*?)\"");
+    private static final Pattern PATTERN_PLAYER_AAAA = Pattern.compile("player_aaaa=({.*?});", Pattern.DOTALL);
 
     private String fixPic(String pic) {
         if (TextUtils.isEmpty(pic)) return "";
@@ -102,7 +101,9 @@ public class FengYe extends Spider {
                 url = removeTrailingSlash(siteUrl) + (url.startsWith("/") ? url : "/" + url);
             }
             return OkHttp.string(url, null, getHeaders(siteUrl));
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            System.out.println("=== fetchHtml exception: " + e.getMessage());
+        }
         return "";
     }
 
@@ -398,12 +399,9 @@ public class FengYe extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        String ua = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
-
         if (TextUtils.isEmpty(id)) return Result.error("播放ID为空");
         String vid = id.trim();
         if (vid.contains("$")) vid = vid.substring(vid.lastIndexOf("$") + 1);
-
         if (TextUtils.isEmpty(vid)) return Result.error("播放ID为空");
 
         String playUrl;
@@ -413,31 +411,57 @@ public class FengYe extends Spider {
             playUrl = vid;
         }
 
+        System.out.println("=== playerContent: playUrl=" + playUrl);
+
         String html = fetchHtml(playUrl);
         if (TextUtils.isEmpty(html)) {
+            System.out.println("=== playerContent: html is empty, return playUrl directly");
             return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
         }
 
+        // 方法1：用正则提取 player_aaaa
         Matcher m = PATTERN_PLAYER_AAAA.matcher(html);
-        if (!m.find()) {
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
-        }
-
-        try {
-            JSONObject json = new JSONObject(m.group(1));
-            String url = json.optString("url");
-            String from = json.optString("from");
-
-            if (TextUtils.isEmpty(url)) return Result.error("无播放地址");
-
-            if (url.startsWith("http") && (url.contains(".m3u8") || url.contains(".mp4"))) {
-                return Result.get().url(url).parse(0).header(getHeaders()).string();
+        if (m.find()) {
+            try {
+                String jsonStr = m.group(1);
+                System.out.println("=== playerContent: found player_aaaa=" + jsonStr);
+                JSONObject json = new JSONObject(jsonStr);
+                String url = json.optString("url");
+                System.out.println("=== playerContent: extracted url=" + url);
+                
+                if (!TextUtils.isEmpty(url) && url.startsWith("http")) {
+                    return Result.get().url(url).parse(0).header(getHeaders()).string();
+                }
+            } catch (Exception e) {
+                System.out.println("=== playerContent: parse json error=" + e.getMessage());
             }
-
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
-        } catch (Exception e) {
-            return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
         }
+
+        // 方法2：如果正则没匹配到，直接用字符串搜索（备用方案）
+        try {
+            int start = html.indexOf("player_aaaa=");
+            if (start != -1) {
+                int end = html.indexOf("</script>", start);
+                if (end != -1) {
+                    String jsonStr = html.substring(start + 12, end).trim();
+                    if (jsonStr.endsWith(";")) {
+                        jsonStr = jsonStr.substring(0, jsonStr.length() - 1);
+                    }
+                    System.out.println("=== playerContent: found via indexOf=" + jsonStr);
+                    JSONObject json = new JSONObject(jsonStr);
+                    String url = json.optString("url");
+                    if (!TextUtils.isEmpty(url) && url.startsWith("http")) {
+                        return Result.get().url(url).parse(0).header(getHeaders()).string();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("=== playerContent: fallback error=" + e.getMessage());
+        }
+
+        // 都失败了，返回页面让播放器自己解析
+        System.out.println("=== playerContent: all methods failed, return playUrl");
+        return Result.get().url(playUrl).parse(1).header(getHeaders()).string();
     }
 
     @Override
