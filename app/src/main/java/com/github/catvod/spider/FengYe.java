@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Result;
@@ -19,6 +20,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +38,7 @@ import okhttp3.Response;
 
 public class FengYe extends Spider {
 
+    private static final String TAG = "FengYe";
     private String siteUrl = "https://maihaolian.com";
     private Context mContext;
 
@@ -57,17 +62,12 @@ public class FengYe extends Spider {
         return pic;
     }
 
-    /**
-     * 通用请求头 —— 保持精简，避免 TVBox 的 OkHttp 不支持某些特性（如 br 编码）
-     */
     private Map<String, String> getHeaders(String referer) {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", UA);
         h.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         h.put("Accept-Language", "zh-CN,zh;q=0.9");
-        // ❌ 不要加 Accept-Encoding，OkHttp 会自动处理 gzip，但可能不支持 br
         
-        // 强制保证 site_entry=1，这是网站反爬的核心校验
         String cookie = sessionCookie;
         if (TextUtils.isEmpty(cookie)) {
             cookie = "site_entry=1";
@@ -75,23 +75,15 @@ public class FengYe extends Spider {
             cookie = cookie + "; site_entry=1";
         }
         h.put("Cookie", cookie);
-        
         h.put("Referer", TextUtils.isEmpty(referer) ? siteUrl + "/" : referer);
         return h;
     }
 
-    /**
-     * 验证码验证专用请求头（XHR）
-     */
     private Map<String, String> getVerifyHeaders(String referer) {
         Map<String, String> h = getHeaders(referer);
         h.put("Accept", "application/json, text/javascript, */*; q=0.01");
         h.put("X-Requested-With", "XMLHttpRequest");
         h.put("Origin", siteUrl);
-        // 验证码图片请求用
-        h.put("Sec-Fetch-Dest", "image");
-        h.put("Sec-Fetch-Mode", "no-cors");
-        h.put("Sec-Fetch-Site", "same-origin");
         return h;
     }
 
@@ -145,7 +137,7 @@ public class FengYe extends Spider {
         }
     }
 
-    // ========== 网络请求（统一入口） ==========
+    // ========== 网络请求 ==========
     private String fetch(String url) {
         return fetch(url, siteUrl + "/");
     }
@@ -183,6 +175,71 @@ public class FengYe extends Spider {
             return (response.isSuccessful() && response.body() != null) ? response.body().bytes() : null;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    // ========== 核心：从 jar 内提取 tessdata ==========
+    
+    @Override
+    public void init(Context context, String extend) throws Exception {
+        this.mContext = context;
+        // 首次加载时把 jar 内的训练数据解压到 filesDir
+        extractTessData();
+        sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
+        fetch("/");
+    }
+
+    /**
+     * 从 jar 包 resources 目录提取 eng.traineddata 到 filesDir/tessdata/
+     * TessBaseAPI.init(path, "eng") 要求 path/tessdata/eng.traineddata 必须存在
+     */
+    private void extractTessData() {
+        File targetFile = null;
+        try {
+            File tessDir = new File(mContext.getFilesDir(), "tessdata");
+            if (!tessDir.exists()) {
+                tessDir.mkdirs();
+            }
+            targetFile = new File(tessDir, "eng.traineddata");
+            
+            // 已存在且大小正常（eng.traineddata 正常 3~4MB）就跳过
+            if (targetFile.exists() && targetFile.length() > 1024 * 1024) {
+                Log.d(TAG, "tessdata already exists: " + targetFile.getAbsolutePath());
+                return;
+            }
+            
+            // 方式1：从 jar 包 resources 读取（标准 Maven/Gradle 打包路径）
+            InputStream is = getClass().getResourceAsStream("/tessdata/eng.traineddata");
+            
+            // 方式2：备选，TVBox 某些加载方式下用 assets
+            if (is == null) {
+                is = mContext.getAssets().open("tessdata/eng.traineddata");
+            }
+            
+            if (is == null) {
+                Log.e(TAG, "eng.traineddata not found in jar resources or assets!");
+                return;
+            }
+            
+            FileOutputStream fos = new FileOutputStream(targetFile);
+            byte[] buffer = new byte[8192];
+            int len;
+            long total = 0;
+            while ((len = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
+                total += len;
+            }
+            fos.close();
+            is.close();
+            
+            Log.d(TAG, "tessdata extracted: " + targetFile.getAbsolutePath() + ", size=" + total);
+        } catch (Exception e) {
+            Log.e(TAG, "extractTessData failed: " + e.getMessage());
+            e.printStackTrace();
+            // 清理损坏的文件
+            if (targetFile != null && targetFile.exists()) {
+                targetFile.delete();
+            }
         }
     }
 
@@ -228,8 +285,7 @@ public class FengYe extends Spider {
     }
 
     /**
-     * OCR识别优化版
-     * 验证码特征：100x40 PNG，2色（背景白255，文字灰50），固定4位数字
+     * OCR识别：针对枫叶影院2色验证码优化
      */
     private String ocr(byte[] imgBytes) {
         try {
@@ -240,7 +296,6 @@ public class FengYe extends Spider {
             int[] pixels = new int[w * h];
             bmp.getPixels(pixels, 0, w, 0, 0, w, h);
 
-            // 2色验证码用固定阈值即可，同时尝试反色方案
             int[] thresholds = new int[]{180, 150, 200};
             String best = "";
             
@@ -321,15 +376,6 @@ public class FengYe extends Spider {
     }
 
     // ========== 首页 ==========
-    @Override
-    public void init(Context context, String extend) throws Exception {
-        this.mContext = context;
-        // TessBaseAPI 训练数据需要提前放到 filesDir/tessdata/eng.traineddata
-        // CaptchaUtil.initTessData(context);
-        sessionCookie = mergeCookie(sessionCookie, "site_entry", "1");
-        fetch("/");
-    }
-
     @Override
     public String homeContent(boolean filter) throws Exception {
         ArrayList<Class> classes = new ArrayList<>();
