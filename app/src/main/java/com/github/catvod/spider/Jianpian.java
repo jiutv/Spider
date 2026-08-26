@@ -33,8 +33,8 @@ import okhttp3.Response;
 public class Jianpian extends Spider {
 
     private static final String SITE_URL = "https://japi.zxfmj.com";
-    // 固定使用 img.cqbqr.com，API返回的 static.ztcuc.com 已失效(DNS解析失败)
-    private static final String IMG_DOMAIN = "img.cqbqr.com";
+    // 移除硬编码的图片域名，改为动态获取
+    private String imgDomain = null; // 动态获取
     private static final Pattern CR_TAG = Pattern.compile("\\[a=cr:[^\\]]+\\]|\\[/a\\]");
 
     private static final String FILTER_JSON = "{" +
@@ -50,8 +50,6 @@ public class Jianpian extends Spider {
     private static final List<String> TYPE_NAMES = Arrays.asList("Netflix", "电影", "电视剧", "短剧", "动漫", "综艺", "纪录片");
 
     private final OkHttpClient client = new OkHttpClient();
-    // 固定使用可用域名，不动态获取（API返回的域名已失效）
-    private final String imgDomain = IMG_DOMAIN;
 
     private Map<String, String> getHeader() {
         Map<String, String> headers = new HashMap<>();
@@ -63,8 +61,47 @@ public class Jianpian extends Spider {
 
     @Override
     public void init(Context context, String extend) {
-        // 不再从API获取imgDomain，因为API返回的static.ztcuc.com已失效
-        // 固定使用 img.cqbqr.com
+        // 在初始化时动态获取图片域名
+        fetchImageDomain();
+    }
+
+    /**
+     * 从 API 获取可用的图片域名列表，并选取第一个可用的作为默认域名
+     */
+    private void fetchImageDomain() {
+        try {
+            String url = SITE_URL + "/api/v2/settings/resourceDomainConfig";
+            String response = get(url);
+            if (TextUtils.isEmpty(response)) {
+                // 如果获取失败，使用一个备用的硬编码域名，但要确保其可用性
+                // 这里可以设置一个默认值，或者从日志中获取一个已知可用的域名
+                imgDomain = "img.ztwhy.com"; // 从抓包日志中看到的可用域名之一
+                return;
+            }
+
+            JSONObject root = new JSONObject(response);
+            if (root.optInt("code") == 1) {
+                JSONObject data = root.optJSONObject("data");
+                if (data != null) {
+                    String domainListStr = data.optString("imgDomain");
+                    if (!TextUtils.isEmpty(domainListStr)) {
+                        // 域名列表用逗号分隔，取第一个即可
+                        String[] domains = domainListStr.split(",");
+                        if (domains.length > 0) {
+                            imgDomain = domains[0].trim();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // 如果解析失败，使用备用的硬编码域名
+            imgDomain = "img.ztwhy.com";
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 发生异常时，使用备用的硬编码域名
+            imgDomain = "img.ztwhy.com";
+        }
     }
 
     @Override
@@ -82,6 +119,11 @@ public class Jianpian extends Spider {
 
     @Override
     public String homeVideoContent() {
+        // 确保图片域名已获取
+        if (imgDomain == null) {
+            fetchImageDomain();
+        }
+
         ArrayList<Vod> list = new ArrayList<>();
         Set<String> ids = new HashSet<>();
         try {
@@ -114,6 +156,11 @@ public class Jianpian extends Spider {
 
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
+        // 确保图片域名已获取
+        if (imgDomain == null) {
+            fetchImageDomain();
+        }
+
         ArrayList<Vod> list = new ArrayList<>();
         if (TextUtils.isEmpty(pg)) pg = "1";
 
@@ -506,10 +553,12 @@ public class Jianpian extends Spider {
     private String fixImageUrl(String rawImg) {
         if (TextUtils.isEmpty(rawImg)) return "";
         if (rawImg.startsWith("http")) return rawImg;
+        // 使用动态获取的图片域名，如果未获取到则使用备用域名
+        String domain = imgDomain != null ? imgDomain : "img.ztwhy.com";
         if (rawImg.startsWith("/")) {
-            return "https://" + imgDomain + rawImg;
+            return "https://" + domain + rawImg;
         } else {
-            return "https://" + imgDomain + "/" + rawImg;
+            return "https://" + domain + "/" + rawImg;
         }
     }
 
@@ -539,8 +588,6 @@ public class Jianpian extends Spider {
             pic = item.optString("macimg");
         } else if (item.has("cover") && !item.isNull("cover")) {
             pic = item.optString("cover");
-        } else if (item.has("thumbnail") && !item.isNull("thumbnail")) {
-            pic = item.optString("thumbnail");
         } else if (item.has("cover_image") && !item.isNull("cover_image")) {
             pic = item.optString("cover_image");
         } else if (item.has("image") && !item.isNull("image")) {
