@@ -141,7 +141,6 @@ public class App99 extends Spider {
                 }
             }
 
-            // 返回带分类和视频的结果
             return Result.string(classList, vodList);
         } catch (Exception e) {
             return Result.string(new ArrayList<>(), new ArrayList<>());
@@ -328,7 +327,7 @@ public class App99 extends Spider {
 
         Request.Builder builder = new Request.Builder()
                 .url(apiUrl)
-                .post(RequestBody.create(params.toString(), JSON_MEDIA));
+                .post(RequestBody.create(JSON_MEDIA, params.toString()));  // 修正参数顺序
 
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             builder.addHeader(entry.getKey(), entry.getValue());
