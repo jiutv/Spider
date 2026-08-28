@@ -2,6 +2,7 @@ package com.github.catvod.spider;
 
 import android.content.Context;
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Filter;
@@ -26,16 +27,18 @@ import okhttp3.Response;
 
 public class App99 extends Spider {
 
+    private static final String TAG = "App99";
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
     private OkHttpClient client;
 
     private String host;
     private String token;
     private String uuid;
-    private String appId;
+    private String appKey;      // 对应 ext 中的 appkey
+    private String buildSignature; // 对应 ext 中的 buildSignature
     private String userAgent;
-    private String version;
-    private String deviceId;
+    private String versionName;
+    private String packageName;
 
     private JSONObject cache = new JSONObject();
 
@@ -45,10 +48,11 @@ public class App99 extends Spider {
         try {
             JSONObject config = new JSONObject(extend);
             host = config.optString("host");
-            appId = config.optString("appId");
+            appKey = config.optString("appkey");
+            buildSignature = config.optString("buildSignature");
+            versionName = config.optString("versionName", "1.2.0");
+            packageName = config.optString("package");
             userAgent = config.optString("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            version = config.optString("version", "1.0");
-            deviceId = config.optString("deviceId", UUID.randomUUID().toString());
             uuid = config.optString("uuid", UUID.randomUUID().toString());
 
             client = new OkHttpClient.Builder()
@@ -57,6 +61,7 @@ public class App99 extends Spider {
                     .writeTimeout(30, TimeUnit.SECONDS)
                     .build();
 
+            // 尝试登录获取 token（如果接口需要）
             doLogin();
         } catch (Exception e) {
             e.printStackTrace();
@@ -66,11 +71,11 @@ public class App99 extends Spider {
     private void doLogin() {
         try {
             JSONObject params = new JSONObject();
-            params.put("appId", appId);
-            params.put("deviceId", deviceId);
-            params.put("version", version);
+            params.put("appKey", appKey);
+            params.put("version", versionName);
+            params.put("package", packageName);
 
-            JSONObject result = apiRequest("/api/login", params);
+            JSONObject result = apiRequest("/login", params); // 根据实际接口调整
             if (result.has("data")) {
                 JSONObject data = result.getJSONObject("data");
                 token = data.optString("token");
@@ -109,9 +114,9 @@ public class App99 extends Spider {
             req.put("class", getDefaultCategoryId());
             req.put("sort", "time");
             req.put("order", 1);
-            req.put("token", token);
+            if (!TextUtils.isEmpty(token)) req.put("token", token);
 
-            JSONObject result = apiRequest("/api/category", req);
+            JSONObject result = apiRequest("/category", req);
             List<Vod> vodList = new ArrayList<>();
             if (result.has("data")) {
                 JSONArray data = result.getJSONArray("data");
@@ -130,19 +135,20 @@ public class App99 extends Spider {
             }
 
             // 构建分类列表
-            List<com.github.catvod.bean.Class> classList = new ArrayList<>();
+            List<Class> classList = new ArrayList<>();
             if (cache.has("classify")) {
                 JSONArray classify = cache.getJSONArray("classify");
                 for (int i = 0; i < classify.length(); i++) {
                     JSONObject c = classify.getJSONObject(i);
                     String id = c.optString("id");
                     String name = c.optString("name");
-                    classList.add(new com.github.catvod.bean.Class(id, name));
+                    classList.add(new Class(id, name));
                 }
             }
 
             return Result.string(classList, vodList);
         } catch (Exception e) {
+            Log.e(TAG, "homeContent error", e);
             return Result.string(new ArrayList<>(), new ArrayList<>());
         }
     }
@@ -161,9 +167,9 @@ public class App99 extends Spider {
                     req.put(entry.getKey(), entry.getValue());
                 }
             }
-            req.put("token", token);
+            if (!TextUtils.isEmpty(token)) req.put("token", token);
 
-            JSONObject result = apiRequest("/api/category", req);
+            JSONObject result = apiRequest("/category", req);
             List<Vod> vodList = new ArrayList<>();
             int total = 0;
             if (result.has("data")) {
@@ -184,6 +190,7 @@ public class App99 extends Spider {
             int pageCount = (total + 20) / 21;
             return Result.get().page(page, pageCount, 0, 0).vod(vodList).string();
         } catch (Exception e) {
+            Log.e(TAG, "categoryContent error", e);
             return Result.string(new ArrayList<>());
         }
     }
@@ -194,9 +201,9 @@ public class App99 extends Spider {
             String id = ids.get(0);
             JSONObject req = new JSONObject();
             req.put("id", id);
-            req.put("token", token);
+            if (!TextUtils.isEmpty(token)) req.put("token", token);
 
-            JSONObject result = apiRequest("/api/detail", req);
+            JSONObject result = apiRequest("/detail", req);
             if (!result.has("data")) return Result.string(new Vod());
 
             JSONObject data = result.getJSONObject("data");
@@ -235,6 +242,7 @@ public class App99 extends Spider {
 
             return Result.string(vod);
         } catch (Exception e) {
+            Log.e(TAG, "detailContent error", e);
             return Result.string(new Vod());
         }
     }
@@ -247,9 +255,9 @@ public class App99 extends Spider {
             req.put("page", 1);
             req.put("limit", 21);
             req.put("sort", "relevance");
-            req.put("token", token);
+            if (!TextUtils.isEmpty(token)) req.put("token", token);
 
-            JSONObject result = apiRequest("/api/search", req);
+            JSONObject result = apiRequest("/search", req);
             List<Vod> vodList = new ArrayList<>();
             if (result.has("data")) {
                 JSONArray data = result.getJSONArray("data");
@@ -266,6 +274,7 @@ public class App99 extends Spider {
             }
             return Result.string(vodList);
         } catch (Exception e) {
+            Log.e(TAG, "searchContent error", e);
             return Result.string(new ArrayList<>());
         }
     }
@@ -280,14 +289,15 @@ public class App99 extends Spider {
             JSONObject req = new JSONObject();
             req.put("flag", flag);
             req.put("id", id);
-            req.put("token", token);
-            JSONObject result = apiRequest("/api/play", req);
+            if (!TextUtils.isEmpty(token)) req.put("token", token);
+            JSONObject result = apiRequest("/play", req);
             if (result.has("url")) {
                 String url = result.getString("url");
                 return buildPlayResult(url, flag);
             }
             return Result.error("播放地址获取失败");
         } catch (Exception e) {
+            Log.e(TAG, "playerContent error", e);
             return Result.error(e.getMessage());
         }
     }
@@ -307,12 +317,15 @@ public class App99 extends Spider {
         }
     }
 
+    // ---------- 核心 API 请求 ----------
     private JSONObject apiRequest(String path, JSONObject params) throws Exception {
         String apiUrl = host + path;
         String nonce = UUID.randomUUID().toString().replace("-", "");
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        String sign = md5(nonce + timestamp + appId + version + token);
+        // 签名算法：原代码 m344a 使用了 appId, secret, nonce, timestamp 等
+        // 这里使用 appKey 和 buildSignature 模拟
+        String sign = md5(nonce + timestamp + appKey + buildSignature + versionName);
 
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", userAgent);
@@ -321,23 +334,32 @@ public class App99 extends Spider {
         headers.put("timestamp", timestamp);
         headers.put("nonce", nonce);
         headers.put("sign", sign);
+        headers.put("appKey", appKey);
         if (!TextUtils.isEmpty(token)) {
             headers.put("token", token);
         }
 
+        // 打印请求日志（方便调试）
+        Log.d(TAG, "Request URL: " + apiUrl);
+        Log.d(TAG, "Request params: " + params.toString());
+        Log.d(TAG, "Request headers: " + headers);
+
         Request.Builder builder = new Request.Builder()
                 .url(apiUrl)
-                .post(RequestBody.create(JSON_MEDIA, params.toString()));  // 修正参数顺序
+                .post(RequestBody.create(JSON_MEDIA, params.toString())); // 修正参数顺序
 
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             builder.addHeader(entry.getKey(), entry.getValue());
         }
 
         try (Response response = client.newCall(builder.build()).execute()) {
-            if (!response.isSuccessful()) {
-                throw new Exception("HTTP " + response.code());
-            }
             String body = response.body() != null ? response.body().string() : "";
+            Log.d(TAG, "Response code: " + response.code());
+            Log.d(TAG, "Response body: " + body);
+
+            if (!response.isSuccessful()) {
+                throw new Exception("HTTP " + response.code() + " - " + body);
+            }
             if (TextUtils.isEmpty(body)) return new JSONObject();
 
             JSONObject result = new JSONObject(body);
