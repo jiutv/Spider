@@ -2,6 +2,7 @@ package com.github.catvod.spider;
 
 import android.content.Context;
 import android.text.TextUtils;
+import android.util.Base64;
 import android.util.Log;
 
 import com.github.catvod.bean.Class;
@@ -13,11 +14,17 @@ import com.github.catvod.crawler.Spider;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.net.URLEncoder;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -34,8 +41,8 @@ public class App99 extends Spider {
     private String host;
     private String token;
     private String uuid;
-    private String appKey;      // 对应 ext 中的 appkey
-    private String buildSignature; // 对应 ext 中的 buildSignature
+    private String appKey;
+    private String buildSignature;
     private String userAgent;
     private String versionName;
     private String packageName;
@@ -53,7 +60,7 @@ public class App99 extends Spider {
             versionName = config.optString("versionName", "1.2.0");
             packageName = config.optString("package");
             userAgent = config.optString("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            uuid = config.optString("uuid", UUID.randomUUID().toString());
+            uuid = config.optString("uuid", UUID.randomUUID().toString().replace("-", ""));
 
             client = new OkHttpClient.Builder()
                     .connectTimeout(30, TimeUnit.SECONDS)
@@ -61,7 +68,6 @@ public class App99 extends Spider {
                     .writeTimeout(30, TimeUnit.SECONDS)
                     .build();
 
-            // 尝试登录获取 token（如果接口需要）
             doLogin();
         } catch (Exception e) {
             e.printStackTrace();
@@ -75,7 +81,7 @@ public class App99 extends Spider {
             params.put("version", versionName);
             params.put("package", packageName);
 
-            JSONObject result = apiRequest("/login", params); // 根据实际接口调整
+            JSONObject result = apiRequest("/login", params);
             if (result.has("data")) {
                 JSONObject data = result.getJSONObject("data");
                 token = data.optString("token");
@@ -134,15 +140,12 @@ public class App99 extends Spider {
                 }
             }
 
-            // 构建分类列表
             List<Class> classList = new ArrayList<>();
             if (cache.has("classify")) {
                 JSONArray classify = cache.getJSONArray("classify");
                 for (int i = 0; i < classify.length(); i++) {
                     JSONObject c = classify.getJSONObject(i);
-                    String id = c.optString("id");
-                    String name = c.optString("name");
-                    classList.add(new Class(id, name));
+                    classList.add(new Class(c.optString("id"), c.optString("name")));
                 }
             }
 
@@ -263,13 +266,12 @@ public class App99 extends Spider {
                 JSONArray data = result.getJSONArray("data");
                 for (int i = 0; i < data.length(); i++) {
                     JSONObject item = data.getJSONObject(i);
-                    Vod vod = new Vod(
+                    vodList.add(new Vod(
                             item.optString("id"),
                             item.optString("name"),
                             item.optString("pic"),
                             item.optString("remarks")
-                    );
-                    vodList.add(vod);
+                    ));
                 }
             }
             return Result.string(vodList);
@@ -292,8 +294,7 @@ public class App99 extends Spider {
             if (!TextUtils.isEmpty(token)) req.put("token", token);
             JSONObject result = apiRequest("/play", req);
             if (result.has("url")) {
-                String url = result.getString("url");
-                return buildPlayResult(url, flag);
+                return buildPlayResult(result.getString("url"), flag);
             }
             return Result.error("播放地址获取失败");
         } catch (Exception e) {
@@ -317,15 +318,20 @@ public class App99 extends Spider {
         }
     }
 
-    // ---------- 核心 API 请求 ----------
+    // ---------- 核心 API 请求（含加解密） ----------
     private JSONObject apiRequest(String path, JSONObject params) throws Exception {
         String apiUrl = host + path;
         String nonce = UUID.randomUUID().toString().replace("-", "");
         String timestamp = String.valueOf(System.currentTimeMillis());
 
-        // 签名算法：原代码 m344a 使用了 appId, secret, nonce, timestamp 等
-        // 这里使用 appKey 和 buildSignature 模拟
-        String sign = md5(nonce + timestamp + appKey + buildSignature + versionName);
+        // 1. 加密请求体
+        String plainText = params.toString();
+        String encrypted = encrypt(plainText, uuid);
+
+        // 2. 签名（使用加密后的数据参与签名？原代码中 m344a 使用明文？但原 m344a 传入的可能是加密后的字符串？）
+        // 原 m344a 中：String strM4624i0 = ... 加密后的数据，然后 sign = md5(nonce+timestamp+encrypted+...)
+        // 我们按照原逻辑：签名使用加密后的密文
+        String sign = md5(nonce + timestamp + encrypted + appKey + buildSignature + versionName);
 
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", userAgent);
@@ -335,40 +341,108 @@ public class App99 extends Spider {
         headers.put("nonce", nonce);
         headers.put("sign", sign);
         headers.put("appKey", appKey);
-        if (!TextUtils.isEmpty(token)) {
-            headers.put("token", token);
-        }
+        if (!TextUtils.isEmpty(token)) headers.put("token", token);
 
-        // 打印请求日志（方便调试）
         Log.d(TAG, "Request URL: " + apiUrl);
-        Log.d(TAG, "Request params: " + params.toString());
-        Log.d(TAG, "Request headers: " + headers);
+        Log.d(TAG, "Encrypted body: " + encrypted);
+        Log.d(TAG, "Headers: " + headers);
 
         Request.Builder builder = new Request.Builder()
                 .url(apiUrl)
-                .post(RequestBody.create(JSON_MEDIA, params.toString())); // 修正参数顺序
+                .post(RequestBody.create(JSON_MEDIA, encrypted));  // 发送加密后的字符串
 
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             builder.addHeader(entry.getKey(), entry.getValue());
         }
 
         try (Response response = client.newCall(builder.build()).execute()) {
-            String body = response.body() != null ? response.body().string() : "";
+            String encryptedResponse = response.body() != null ? response.body().string() : "";
             Log.d(TAG, "Response code: " + response.code());
-            Log.d(TAG, "Response body: " + body);
+            Log.d(TAG, "Encrypted response: " + encryptedResponse);
 
             if (!response.isSuccessful()) {
-                throw new Exception("HTTP " + response.code() + " - " + body);
+                throw new Exception("HTTP " + response.code() + " - " + encryptedResponse);
             }
-            if (TextUtils.isEmpty(body)) return new JSONObject();
+            if (TextUtils.isEmpty(encryptedResponse)) return new JSONObject();
 
-            JSONObject result = new JSONObject(body);
+            // 3. 解密响应
+            String decrypted = decrypt(encryptedResponse, uuid);
+            Log.d(TAG, "Decrypted response: " + decrypted);
+
+            if (TextUtils.isEmpty(decrypted)) return new JSONObject();
+            JSONObject result = new JSONObject(decrypted);
             int code = result.optInt("code", -1);
             if (code != 0 && code != 200) {
                 throw new Exception(result.optString("msg", "请求失败"));
             }
             return result;
         }
+    }
+
+    // ---------- 加解密实现（参考原 C1376q2） ----------
+    private String encrypt(String plainText, String key) throws Exception {
+        // AES/CBC/PKCS5Padding，密钥取 key 的 MD5? 原代码使用 key.replace("-","") 作为密钥
+        // 但原 m4624i0 中传入的密钥是 uuid（去掉横线），我们直接使用 uuid
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        // 如果长度不是16/24/32，则填充或截断，这里简单取前16字节
+        if (keyBytes.length < 16) {
+            byte[] tmp = new byte[16];
+            System.arraycopy(keyBytes, 0, tmp, 0, keyBytes.length);
+            keyBytes = tmp;
+        } else if (keyBytes.length > 16) {
+            byte[] tmp = new byte[16];
+            System.arraycopy(keyBytes, 0, tmp, 0, 16);
+            keyBytes = tmp;
+        }
+        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, "AES");
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        byte[] iv = cipher.getIV();
+        byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
+        // 组合 IV + 密文
+        byte[] combined = new byte[iv.length + encrypted.length];
+        System.arraycopy(iv, 0, combined, 0, iv.length);
+        System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
+        return Base64.encodeToString(combined, Base64.DEFAULT);
+    }
+
+    private String decrypt(String encryptedBase64, String key) throws Exception {
+        byte[] combined = Base64.decode(encryptedBase64, Base64.DEFAULT);
+        if (combined.length < 16) throw new Exception("Invalid encrypted data");
+        byte[] iv = new byte[16];
+        System.arraycopy(combined, 0, iv, 0, 16);
+        byte[] cipherText = new byte[combined.length - 16];
+        System.arraycopy(combined, 16, cipherText, 0, cipherText.length);
+
+        byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 16) {
+            byte[] tmp = new byte[16];
+            System.arraycopy(keyBytes, 0, tmp, 0, keyBytes.length);
+            keyBytes = tmp;
+        } else if (keyBytes.length > 16) {
+            byte[] tmp = new byte[16];
+            System.arraycopy(keyBytes, 0, tmp, 0, 16);
+            keyBytes = tmp;
+        }
+        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, "AES");
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
+        byte[] decrypted = cipher.doFinal(cipherText);
+        // 检查是否 gzip 压缩（原代码中可能解压）
+        // 原 m4537V 中如果第一个字节是 0x1F 0x8B 则解压，我们尝试检测
+        if (decrypted.length >= 2 && decrypted[0] == (byte) 0x1F && decrypted[1] == (byte) 0x8B) {
+            // GZIP 解压
+            ByteArrayInputStream bais = new ByteArrayInputStream(decrypted);
+            GZIPInputStream gzip = new GZIPInputStream(bais);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buf = new byte[1024];
+            int len;
+            while ((len = gzip.read(buf)) > 0) {
+                baos.write(buf, 0, len);
+            }
+            return baos.toString(StandardCharsets.UTF_8.name());
+        }
+        return new String(decrypted, StandardCharsets.UTF_8);
     }
 
     private String md5(String input) {
