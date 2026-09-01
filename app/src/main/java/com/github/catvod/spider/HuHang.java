@@ -29,7 +29,6 @@ import java.util.regex.Pattern;
  *   <li>详情页: /huhzc/{vid}.html</li>
  *   <li>播放页: /angplay/{vid}-{sid}-{nid}.html</li>
  *   <li>搜索: /index.php?m=search&searchword={kw}</li>
- *   <li>高级筛选: /search.php?searchtype=5&tid={tid}&area={area}&year={year}&order={order}&page={p}</li>
  * </ul>
  *
  * <p>init 配置：{@code {"url": "https://www.qdhuhang.com"}}</p>
@@ -79,30 +78,6 @@ public class HuHang extends Spider {
             {"53", "都市剧"}, {"54", "脑洞剧"}, {"55", "爽文剧"},
     };
 
-    // 地区 - 所有分类通用
-    private static final String[][] AREA_FILTERS = {
-            {"大陆", "大陆"}, {"香港", "香港"}, {"台湾", "台湾"},
-            {"日本", "日本"}, {"韩国", "韩国"}, {"欧美", "欧美"},
-            {"泰国", "泰国"}, {"其他", "其他"},
-    };
-
-    // 年代 - 所有分类通用
-    private static final String[][] YEAR_FILTERS = {
-            {"2027", "2027"}, {"2026", "2026"}, {"2025", "2025"},
-            {"2024", "2024"}, {"2023", "2023"}, {"2022", "2022"},
-            {"2021", "2021"}, {"2020", "2020"}, {"2019", "2019"},
-            {"2018", "2018"}, {"2017", "2017"}, {"2016", "2016"},
-            {"2015", "2015"}, {"2014", "2014"}, {"2013", "2013"},
-            {"2012", "2012"}, {"2010", "2010"},
-    };
-
-    // 排序
-    private static final String[][] ORDER_FILTERS = {
-            {"time", "按时间"},
-            {"hit", "按人气"},
-            {"commend", "按推荐"},
-    };
-
     @Override
     public void init(Context context, String extend) {
         if (!TextUtils.isEmpty(extend)) {
@@ -117,7 +92,6 @@ public class HuHang extends Spider {
         headers.put("User-Agent", Util.CHROME);
         headers.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         headers.put("Accept-Language", "zh-CN,zh;q=0.9");
-        headers.put("Referer", baseUrl + "/");
     }
 
     // =====================================================================
@@ -133,12 +107,12 @@ public class HuHang extends Spider {
             classes.add(new Class(cat[0], cat[1]));
         }
 
-        // 5大分类都加筛选器：类型 + 地区 + 年代 + 排序
-        filters.put("1", buildAllFilters("1", MOVIE_FILTERS));
-        filters.put("2", buildAllFilters("2", TV_FILTERS));
-        filters.put("3", buildAllFilters("3", VARIETY_FILTERS));
-        filters.put("4", buildAllFilters("4", ANIME_FILTERS));
-        filters.put("48", buildAllFilters("48", SHORT_FILTERS));
+        // 5大分类都加类型筛选器
+        filters.put("1", buildFilters("类型", "1", MOVIE_FILTERS));
+        filters.put("2", buildFilters("类型", "2", TV_FILTERS));
+        filters.put("3", buildFilters("类型", "3", VARIETY_FILTERS));
+        filters.put("4", buildFilters("类型", "4", ANIME_FILTERS));
+        filters.put("48", buildFilters("类型", "48", SHORT_FILTERS));
 
         String html = fetch(baseUrl + "/qdhyl/1.html");
         ArrayList<Vod> list = parseVodList(html);
@@ -152,69 +126,25 @@ public class HuHang extends Spider {
 
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
+        String catId = tid;
+        if (extend != null && extend.containsKey("cate") && !TextUtils.isEmpty(extend.get("cate"))) {
+            catId = extend.get("cate");
+        }
+
         int page = 1;
         try { page = Integer.parseInt(pg); } catch (NumberFormatException ignored) {}
 
-        // 判断是否使用高级筛选（地区/年代/排序）
-        boolean useAdvSearch = false;
-        String area = "";
-        String year = "";
-        String order = "";
-        String cateId = tid;
-
-        if (extend != null) {
-            if (extend.containsKey("cate") && !TextUtils.isEmpty(extend.get("cate"))) {
-                cateId = extend.get("cate");
-            }
-            if (extend.containsKey("area") && !TextUtils.isEmpty(extend.get("area"))) {
-                area = extend.get("area");
-                useAdvSearch = true;
-            }
-            if (extend.containsKey("year") && !TextUtils.isEmpty(extend.get("year"))) {
-                year = extend.get("year");
-                useAdvSearch = true;
-            }
-            if (extend.containsKey("order") && !TextUtils.isEmpty(extend.get("order"))) {
-                order = extend.get("order");
-                useAdvSearch = true;
-            }
-        }
-
-        String html;
-        int pageCount;
-
-        if (useAdvSearch) {
-            // 高级筛选走 search.php?searchtype=5
-            StringBuilder sb = new StringBuilder();
-            sb.append(baseUrl).append("/search.php?searchtype=5");
-            sb.append("&tid=").append(cateId);
-            if (!TextUtils.isEmpty(area)) {
-                sb.append("&area=").append(java.net.URLEncoder.encode(area, "UTF-8"));
-            }
-            if (!TextUtils.isEmpty(year)) {
-                sb.append("&year=").append(year);
-            }
-            if (!TextUtils.isEmpty(order)) {
-                sb.append("&order=").append(order);
-            }
-            if (page > 1) {
-                sb.append("&page=").append(page);
-            }
-            html = fetch(sb.toString());
-            pageCount = parseSearchPageCount(html);
+        String url;
+        if (page <= 1) {
+            url = baseUrl + "/qdhyl/" + catId + ".html";
         } else {
-            // 纯分类走 /qdhyl/
-            String url;
-            if (page <= 1) {
-                url = baseUrl + "/qdhyl/" + cateId + ".html";
-            } else {
-                url = baseUrl + "/qdhyl/" + cateId + "-" + page + ".html";
-            }
-            html = fetch(url);
-            pageCount = parsePageCount(html);
+            url = baseUrl + "/qdhyl/" + catId + "-" + page + ".html";
         }
 
+        String html = fetch(url);
         ArrayList<Vod> list = parseVodList(html);
+        int pageCount = parsePageCount(html);
+
         return Result.get().page(page, pageCount, 30, pageCount * 30).vod(list).string();
     }
 
@@ -368,10 +298,11 @@ public class HuHang extends Spider {
         while (m.find()) {
             String item = m.group(1);
             try {
+                // ID
                 String idMatch = matchGroup(item, "href=\"/huhzc/(\\d+)\\.html\"", 1);
                 if (TextUtils.isEmpty(idMatch)) continue;
 
-                // 图片 - 优先 data-original
+                // 图片 - 优先 data-original (lazyload), 再 data-src, 再 src
                 String pic = matchGroup(item, "data-original=\"([^\"]+)\"", 1);
                 if (TextUtils.isEmpty(pic)) pic = matchGroup(item, "data-src=\"([^\"]+)\"", 1);
                 if (TextUtils.isEmpty(pic)) pic = matchGroup(item, "src=\"([^\"]+)\"", 1);
@@ -415,29 +346,6 @@ public class HuHang extends Spider {
         }
         p = Pattern.compile("1/(\\d+)");
         m = p.matcher(html);
-        if (m.find()) {
-            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) {}
-        }
-        return 1;
-    }
-
-    private int parseSearchPageCount(String html) {
-        // 搜索结果页的分页: 从 fed-page-info 或共XX页等提取
-        // 从 total/fed-count 中找
-        String countStr = matchGroup(html, "共\\s*<span[^>]*>\\s*(\\d+)\\s*</span>\\s*个影片", 1);
-        if (TextUtils.isEmpty(countStr)) {
-            countStr = matchGroup(html, "id=\"fed-count\"[^>]*>(\\d+)", 1);
-        }
-        if (!TextUtils.isEmpty(countStr)) {
-            try {
-                int total = Integer.parseInt(countStr.trim());
-                // 每页30条
-                return (total + 29) / 30;
-            } catch (NumberFormatException ignored) {}
-        }
-        // 兜底：找尾页链接
-        Pattern p = Pattern.compile("page=(\\d+)[^>]*>尾页");
-        Matcher m = p.matcher(html);
         if (m.find()) {
             try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) {}
         }
@@ -501,51 +409,14 @@ public class HuHang extends Spider {
         return "";
     }
 
-    // 构建单个筛选维度
-    private Filter.Value[] buildValueArray(String allName, String allVal, String[][] items) {
-        Filter.Value[] values = new Filter.Value[items.length + 1];
-        values[0] = new Filter.Value(allName, allVal);
-        for (int i = 0; i < items.length; i++) {
-            values[i + 1] = new Filter.Value(items[i][1], items[i][0]);
+    private ArrayList<Filter> buildFilters(String key, String allId, String[][] items) {
+        ArrayList<Filter> list = new ArrayList<>();
+        ArrayList<Filter.Value> values = new ArrayList<>();
+        values.add(new Filter.Value("全部", allId));
+        for (String[] f : items) {
+            values.add(new Filter.Value(f[1], f[0]));
         }
-        return values;
-    }
-
-    // 构建某分类的所有筛选器
-    private List<Filter> buildAllFilters(String tid, String[][] cateItems) {
-        ArrayList<Filter> filters = new ArrayList<>();
-
-        // 类型
-        ArrayList<Filter.Value> cateValues = new ArrayList<>();
-        cateValues.add(new Filter.Value("全部", tid));
-        for (String[] f : cateItems) {
-            cateValues.add(new Filter.Value(f[1], f[0]));
-        }
-        filters.add(new Filter("cate", "类型", cateValues));
-
-        // 地区
-        ArrayList<Filter.Value> areaValues = new ArrayList<>();
-        areaValues.add(new Filter.Value("全部", ""));
-        for (String[] f : AREA_FILTERS) {
-            areaValues.add(new Filter.Value(f[1], f[0]));
-        }
-        filters.add(new Filter("area", "地区", areaValues));
-
-        // 年代
-        ArrayList<Filter.Value> yearValues = new ArrayList<>();
-        yearValues.add(new Filter.Value("全部", ""));
-        for (String[] f : YEAR_FILTERS) {
-            yearValues.add(new Filter.Value(f[1], f[0]));
-        }
-        filters.add(new Filter("year", "年代", yearValues));
-
-        // 排序
-        ArrayList<Filter.Value> orderValues = new ArrayList<>();
-        orderValues.add(new Filter.Value("按时间", "time"));
-        orderValues.add(new Filter.Value("按人气", "hit"));
-        orderValues.add(new Filter.Value("按推荐", "commend"));
-        filters.add(new Filter("order", "排序", orderValues));
-
-        return filters;
+        list.add(new Filter(key, values));
+        return list;
     }
 }
