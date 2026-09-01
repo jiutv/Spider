@@ -416,7 +416,7 @@ public class HuHang extends Spider {
         for (String[] f : items) {
             values.add(new Filter.Value(f[1], f[0]));
         }
-        list.add(new Filter(key, values));
+        list.add(new Filter(key, key, values));
         return list;
     }
 }
