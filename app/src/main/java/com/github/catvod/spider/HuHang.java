@@ -78,6 +78,9 @@ public class HuHang extends Spider {
             {"53", "都市剧"}, {"54", "脑洞剧"}, {"55", "爽文剧"},
     };
 
+    // 移动端 User-Agent（网站拦截PC浏览器，必须用移动端UA）
+    private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.5845.178 Mobile Safari/537.36";
+
     @Override
     public void init(Context context, String extend) {
         if (!TextUtils.isEmpty(extend)) {
@@ -89,7 +92,7 @@ public class HuHang extends Spider {
         }
         if (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         headers = new HashMap<>();
-        headers.put("User-Agent", Util.CHROME);
+        headers.put("User-Agent", MOBILE_UA);
         headers.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         headers.put("Accept-Language", "zh-CN,zh;q=0.9");
     }
