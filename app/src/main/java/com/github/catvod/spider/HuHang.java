@@ -198,38 +198,53 @@ public class HuHang extends Spider {
             vod.setVodContent(desc);
         }
 
-        // 播放线路名称
-        String[] sourceNames = parseSourceNames(html);
-
-        // 剧集链接
-        Pattern epPattern = Pattern.compile("href=\"(/angplay/" + vid + "-(\\d+)-(\\d+)\\.html)\"[^>]*>([^<]+)</a>");
-        Matcher epMatcher = epPattern.matcher(html);
-
-        HashMap<String, ArrayList<String[]>> sources = new LinkedHashMap<>();
-        while (epMatcher.find()) {
-            String epUrl = epMatcher.group(1);
-            String sid = epMatcher.group(2);
-            String epName = epMatcher.group(4).trim();
-            if (!sources.containsKey(sid)) sources.put(sid, new ArrayList<String[]>());
-            sources.get(sid).add(new String[]{epName, epUrl});
+        // 解析播放线路和剧集
+        // HTML结构: <span id="wjm3u8">丹顶云</span> ... <dd class="wjm3u8">...<a href="/angplay/vid-sid-nid.html">第01集</a>...</dd>
+        LinkedHashMap<String, String> sourceMap = new LinkedHashMap<>();
+        Pattern sp = Pattern.compile("<span[^>]*id=\"([^\"]+)\"[^>]*>([^<]+)</span>");
+        Matcher sm = sp.matcher(html);
+        while (sm.find()) {
+            String spId = sm.group(1);
+            String spName = sm.group(2).trim();
+            if (isValidSourceName(spName)) sourceMap.put(spId, spName);
         }
 
         StringBuilder fromSb = new StringBuilder();
         StringBuilder urlSb = new StringBuilder();
-        int srcIdx = 0;
-        for (String sid : sources.keySet()) {
-            if (fromSb.length() > 0) fromSb.append("$$$");
-            String srcName = srcIdx < sourceNames.length ? sourceNames[srcIdx] : ("线路" + (srcIdx + 1));
-            fromSb.append(srcName);
+
+        // 按 <dd class="xxx"> 块解析每条线路的剧集
+        Pattern ddPattern = Pattern.compile("<dd[^>]*class=\"([^\"]+)\"[^>]*>(.*?)</dd>", Pattern.DOTALL);
+        Matcher ddMatcher = ddPattern.matcher(html);
+
+        while (ddMatcher.find()) {
+            String ddClass = ddMatcher.group(1).trim();
+            String ddContent = ddMatcher.group(2);
+
+            // 用 dd 的 class 匹配 span 的 id，得到线路名称
+            String srcName = sourceMap.get(ddClass);
+            if (TextUtils.isEmpty(srcName)) continue;
+
+            // 提取该剧集列表
+            Pattern epPattern = Pattern.compile(
+                    "href=\"(/angplay/" + vid + "-\\d+-\\d+\\.html)\"[^>]*>([^<]+)</a>");
+            Matcher epMatcher = epPattern.matcher(ddContent);
 
             StringBuilder epSb = new StringBuilder();
-            for (String[] ep : sources.get(sid)) {
+            while (epMatcher.find()) {
+                String epUrl = epMatcher.group(1);
+                String epName = epMatcher.group(2).trim();
+                // 过滤"立即播放"等非剧集链接
+                if (epName.contains("立即") || epName.contains("播放")) continue;
                 if (epSb.length() > 0) epSb.append("#");
-                epSb.append(ep[0]).append("$").append(ep[1]);
+                epSb.append(epName).append("$").append(epUrl);
             }
+
+            if (epSb.length() == 0) continue;
+
+            if (fromSb.length() > 0) fromSb.append("$$$");
+            fromSb.append(srcName);
             if (urlSb.length() > 0) urlSb.append("$$$");
             urlSb.append(epSb);
-            srcIdx++;
         }
 
         vod.setVodPlayFrom(fromSb.toString());
