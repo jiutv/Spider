@@ -176,6 +176,8 @@ public class BaiduDj extends Spider {
         themes.add(themesItem2);
 
         JsonObject innerData = new JsonObject();
+        // 字段顺序严格对齐 JS (extRequest 放最前)
+        innerData.add("extRequest", extRequest);
         innerData.addProperty("from", "feed");
         innerData.addProperty("page", "channel_video_landing");
         innerData.addProperty("pd", "feed");
@@ -184,7 +186,6 @@ public class BaiduDj extends Spider {
         innerData.addProperty("theme", "");
         innerData.addProperty("timestamp", t);
         innerData.addProperty("version", version);
-        innerData.add("extRequest", extRequest);
         innerData.add("themes", themes);
 
         JsonObject wrapper = new JsonObject();
@@ -342,9 +343,8 @@ public class BaiduDj extends Spider {
         inner.addProperty("fe_page_type", "search");
         inner.add("extra", extra);
 
-        long t = System.currentTimeMillis() / 1000L;
-        inner.addProperty("timestamp", t);
-        inner.addProperty("version", Util.MD5(t + "v2"));
+        // 注意: JS search 里没有 timestamp/version (只有 category 才有)
+        // 不要加, 否则可能被 API 拒绝
 
         String url = HOST + SEARCH_URL;
         JsonObject res = requestListOrSearch(url, inner.toString());
