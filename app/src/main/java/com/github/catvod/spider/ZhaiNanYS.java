@@ -20,52 +20,73 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 宅男影视 (m.kptv.us) 短剧爬虫
- * 接口: https://bf.xoxowin86cisyap.com/api.php/provide/vod/  (PHP vod 标准格式)
- * 短剧分类 (来自 /api/web 的 short 字段):
- *   反转爽文,68 | 穿越年代,66 | 现代言情,67 | 古装仙侠,72 | 都市脑洞,71
+ * 宅男影视 (m.kptv.us) 全站爬虫
+ * 主站 PHP vod API: https://bfzyapi.com/api.php/provide/vod/
+ * 覆盖电影 / 电视剧 / 动漫 / 综艺 / 短剧 共 49 个分类
  */
 public class ZhaiNanYS extends Spider {
 
-    /** 短剧 PHP vod API 基地址 */
-    private static final String API_BASE = "https://bf.xoxowin86cisyap.com/api.php/provide/vod/";
+    /** 主站 PHP vod API (全站 49 个分类) */
+    private static final String API_BASE = "https://bfzyapi.com/api.php/provide/vod/";
 
-    /** 短剧分类定义: type_id -> type_name */
-    private static final LinkedHashMap<String, String> SHORT_CLASSES = new LinkedHashMap<>();
+    /** 首页 4 个板块 (来自 m.kptv.us /api/web 的 hot_db 字段) */
+    private static final String[][] HOME_TABS = {
+            {"21", "电影"},
+            {"31", "电视剧"},
+            {"41", "动漫"},
+            {"47", "综艺"}
+    };
 
-    static {
-        // 首页推荐用的反转爽文放第一个, CatVod 会自动取第一个当首页分类
-        SHORT_CLASSES.put("68", "反转爽文");
-        SHORT_CLASSES.put("66", "穿越年代");
-        SHORT_CLASSES.put("67", "现代言情");
-        SHORT_CLASSES.put("72", "古装仙侠");
-        SHORT_CLASSES.put("71", "都市脑洞");
-    }
-
-    /** 默认每个分类第一页数量 */
     private static final int PAGE_SIZE = 20;
+    /** 首页每个板块取多少条 */
+    private static final int HOME_TAB_SIZE = 12;
 
     // ---------- 首页分类 ----------
 
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        for (Map.Entry<String, String> e : SHORT_CLASSES.entrySet()) {
-            classes.add(new Class(e.getKey(), e.getValue()));
-        }
         LinkedHashMap<String, List<Filter>> filters = new LinkedHashMap<>();
+
+        // 从 API 动态拉取分类定义
+        JSONObject root = fetchJson(API_BASE + "?ac=list&limit=1");
+        JSONArray cls = root.optJSONArray("class");
+        if (cls != null) {
+            for (int i = 0; i < cls.length(); i++) {
+                JSONObject c = cls.getJSONObject(i);
+                String tid = String.valueOf(c.optInt("type_id", 0));
+                String name = c.optString("type_name");
+                if (!TextUtils.isEmpty(name) && !"0".equals(tid)) {
+                    classes.add(new Class(tid, name));
+                }
+            }
+        }
+        // 兜底: 如果 API 没返回 class, 写死常用子分类 (和首页板块保持一致)
+        if (classes.isEmpty()) {
+            classes.add(new Class("21", "电影"));
+            classes.add(new Class("31", "电视剧"));
+            classes.add(new Class("41", "动漫"));
+            classes.add(new Class("47", "综艺"));
+            classes.add(new Class("58", "短剧"));
+            classes.add(new Class("68", "反转爽文"));
+        }
+
         return Result.string(classes, filters);
     }
 
-    // ---------- 首页推荐视频 (homeVideoContent) ----------
+    // ---------- 首页推荐 (4 个板块各 N 条, 共 4*HOME_TAB_SIZE 条) ----------
 
     @Override
     public String homeVideoContent() throws Exception {
-        // 反转爽文 前 12 条作为首页推荐
-        String url = API_BASE + "?ac=list&t=68&page=1&limit=12";
-        JSONObject root = fetchJson(url);
-        List<Vod> vods = parseVodList(root);
-        return Result.string(vods);
+        List<Vod> all = new ArrayList<>();
+        for (String[] tab : HOME_TABS) {
+            String tid = tab[0];
+            String url = API_BASE + "?ac=list&t=" + tid + "&page=1&limit=" + HOME_TAB_SIZE;
+            JSONObject root = fetchJson(url);
+            List<Vod> part = parseVodList(root);
+            all.addAll(part);
+        }
+        return Result.string(all);
     }
 
     // ---------- 分类列表 ----------
@@ -108,19 +129,14 @@ public class ZhaiNanYS extends Spider {
         vod.setVodYear(item.optString("vod_year"));
         vod.setVodArea(item.optString("vod_area"));
         vod.setVodContent(item.optString("vod_content"));
+        vod.setVodScore(item.optString("vod_score"));
 
-        // 播放源 (PHP vod 标准字段)
+        // 播放源 (PHP vod 标准: vod_play_from 用 $ 分隔多源, vod_play_url 用 # 分隔)
         String playFrom = item.optString("vod_play_from");
         String playUrl = item.optString("vod_play_url");
-        // PHP vod 的 play_from 里可能多个源用 $ 分隔, 取第一个; play_url 用 # 分隔各源
         if (!TextUtils.isEmpty(playFrom) && !TextUtils.isEmpty(playUrl)) {
-            String[] fromArr = playFrom.split("\\$");
-            String[] urlArr = playUrl.split("#");
-            // 只取第一个播放源, CatVod 可以直接播
-            String firstFrom = fromArr.length > 0 ? fromArr[0] : "";
-            String firstUrl = urlArr.length > 0 ? urlArr[0] : "";
-            vod.setVodPlayFrom(firstFrom);
-            vod.setVodPlayUrl(firstUrl);
+            vod.setVodPlayFrom(playFrom);
+            vod.setVodPlayUrl(playUrl);
         }
 
         return Result.string(vod);
@@ -130,7 +146,8 @@ public class ZhaiNanYS extends Spider {
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
-        // PHP vod 返回的 id 格式就是 "剧集名$m3u8直链", 直接返回直链
+        // PHP vod detail 返回的 vod_play_url 格式: 剧集名$m3u8#剧集名$m3u8
+        // CatVod 传进来的 id 已经是 "剧集名$m3u8" 格式, 取 $ 后面的直链
         String url = id;
         if (!TextUtils.isEmpty(url) && url.contains("$")) {
             url = url.substring(url.lastIndexOf('$') + 1);
@@ -156,11 +173,9 @@ public class ZhaiNanYS extends Spider {
 
     // ---------- 工具方法 ----------
 
-    /** HTTP GET 拿 JSON */
     private JSONObject fetchJson(String url) {
         try {
-            Map<String, String> header = getHeader();
-            String text = OkHttp.string(url, header);
+            String text = OkHttp.string(url, getHeader());
             if (TextUtils.isEmpty(text)) return new JSONObject();
             return new JSONObject(text);
         } catch (Exception e) {
@@ -168,7 +183,6 @@ public class ZhaiNanYS extends Spider {
         }
     }
 
-    /** 解析 PHP vod list 为 CatVod Vod */
     private List<Vod> parseVodList(JSONObject root) {
         List<Vod> vods = new ArrayList<>();
         if (root == null) return vods;
@@ -191,7 +205,6 @@ public class ZhaiNanYS extends Spider {
         return vods;
     }
 
-    /** 解析页码 */
     private int parsePage(String pg) {
         try {
             int p = Integer.parseInt(pg);
@@ -201,7 +214,6 @@ public class ZhaiNanYS extends Spider {
         }
     }
 
-    /** 请求头 (无特殊鉴权, 给个 UA + Referer 就行) */
     private Map<String, String> getHeader() {
         Map<String, String> h = new HashMap<>();
         h.put("User-Agent", "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36");
