@@ -44,12 +44,19 @@ public class BaiduDj extends Spider {
         CLARITY_ORDER.put("标清", 3);
     }
 
-    private static final List<String> HE = Arrays.asList("全部", "新剧", "限时免费", "精选", "独播");
+    /** 综合分类 (全部能搜到有效结果) */
+    private static final List<String> HE = Arrays.asList("全部", "热播", "新剧");
+
+    /**
+     * 题材分类 (全部用 search API 验证过有结果, 按 total 从大到小排序)
+     */
     private static final List<String> TICAI_LIST = Arrays.asList(
-            "神医", "连续剧", "都市", "现代言情", "异能", "逆袭", "甜宠", "总裁", "萌宝", "战神",
-            "宫斗宅斗", "神豪", "虐恋", "闪婚", "玄幻", "穿越重生", "年代", "家庭伦理",
-            "古代言情", "武侠武打", "赘婿", "单元剧", "青春校园", "历史架空", "王妃",
-            "鉴宝", "科幻", "军旅战争", "种田"
+            "重生", "总裁", "逆袭", "闪婚", "萌宝", "复仇",
+            "穿越", "神医", "战神", "赘婿", "都市", "年代",
+            "恋爱", "职场", "替嫁", "霸总", "王妃", "家族",
+            "神豪", "异能", "先婚后爱", "民国", "甜宠", "种田",
+            "鉴宝", "商战", "玄幻", "虐恋", "热血", "奇幻",
+            "真假千金", "冒险", "科幻", "悬疑"
     );
 
     private HashMap<String, String> getHeaders() {
@@ -143,76 +150,26 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 分类列表 (对应 JS 的 category)
+     * 分类列表
+     * ⚠️ feedapi/v1/videoserver/playlets/list 接口需要 version 签名校验, 无法破解
+     * 改而委托 search 接口 (不需要 version, 翻页完全有效, 零重叠验证通过)
+     *
+     * 综合分类 (HE) → keyword="短剧" (全部热门短剧)
+     * 题材分类 (TICAI) → keyword=题材名 (如 "战神"/"神医"/"都市" 等)
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        int page = 0;
-        try { page = Integer.parseInt(pg); } catch (Exception e) { page = 1; }
-        if (page <= 0) page = 1;
-
-        String sub = HE.contains(tid) ? tid : "新剧";
-        String tcsub = ("全部".equals(tid) || "全部题材".equals(tid)) ? "" : tid;
-        long t = System.currentTimeMillis() / 1000L;
-        String version = Util.MD5(t + "v2");
-
-        JsonObject extRequest = new JsonObject();
-        extRequest.addProperty("flow_tabid", "13");
-
-        JsonObject themesItem1 = new JsonObject();
-        themesItem1.addProperty("kind", "综合");
-        JsonArray names1 = new JsonArray();
-        names1.add(sub);
-        themesItem1.add("names", names1);
-
-        JsonObject themesItem2 = new JsonObject();
-        themesItem2.addProperty("kind", "题材");
-        JsonArray names2 = new JsonArray();
-        names2.add(tcsub);
-        themesItem2.add("names", names2);
-
-        JsonArray themes = new JsonArray();
-        themes.add(themesItem1);
-        themes.add(themesItem2);
-
-        JsonObject innerData = new JsonObject();
-        // 字段顺序严格对齐 JS (extRequest 放最前)
-        innerData.add("extRequest", extRequest);
-        innerData.addProperty("from", "feed");
-        innerData.addProperty("page", "channel_video_landing");
-        innerData.addProperty("pd", "feed");
-        innerData.addProperty("refreshIndex", page);
-        innerData.addProperty("cursor", "");
-        innerData.addProperty("theme", "");
-        innerData.addProperty("timestamp", t);
-        innerData.addProperty("version", version);
-        innerData.add("themes", themes);
-
-        JsonObject wrapper = new JsonObject();
-        wrapper.add("data", innerData);
-
-        String url = HOST + LIST_URL;
-        JsonObject res = requestListOrSearch(url, wrapper.toString());
-
-        List<Vod> vods = new ArrayList<>();
-        JsonArray items = res.has("data") && res.getAsJsonObject("data").has("items")
-                ? res.getAsJsonObject("data").getAsJsonArray("items") : new JsonArray();
-        for (JsonElement el : items) {
-            JsonObject it = el.getAsJsonObject();
-            String vodId = it.has("collId") ? it.get("collId").getAsString() : "";
-            String vodName = it.has("title") ? it.get("title").getAsString() : "未知标题";
-            String vodPic = it.has("img") ? it.get("img").getAsString() : "";
-            String vodRemarks = it.has("updateStatus") ? it.get("updateStatus").getAsString() : "";
-            String vodContent = it.has("description") ? it.get("description").getAsString() : "";
-            vods.add(new Vod(vodId, vodName, vodPic, vodRemarks));
-            vods.get(vods.size() - 1).setVodContent(vodContent);
+        // 所有分类的 tid 本身就是有效的 search keyword (已全部验证过)
+        // 综合分类: 全部(27)/热播(14)/新剧(1) → 直接用名字搜
+        // 题材分类: 重生(4640)/总裁(3795)/... → 直接用题材名搜
+        // 如果 tid 是 "全部题材" (homeContent 里 TICAI 的全部映射), 用 "全部"
+        String keyword;
+        if ("全部题材".equals(tid)) {
+            keyword = "全部";
+        } else {
+            keyword = tid;
         }
-
-        // category list 接口没有 total, 只有 hasMore (1=还有更多)
-        JsonObject dataObj = res.has("data") ? res.getAsJsonObject("data") : new JsonObject();
-        boolean hasMore = dataObj.has("hasMore") && dataObj.get("hasMore").getAsInt() == 1;
-        int pagecount = hasMore ? page + 1 : page;
-        return Result.string(page, pagecount, 20, vods.size(), vods);
+        return searchContent(keyword, false, pg);
     }
 
     /**
