@@ -204,11 +204,14 @@ public class BaiduDj extends Spider {
             String vodRemarks = it.has("updateStatus") ? it.get("updateStatus").getAsString() : "";
             String vodContent = it.has("description") ? it.get("description").getAsString() : "";
             vods.add(new Vod(vodId, vodName, vodPic, vodRemarks));
-            // Vod 无构造器带 content, 手动 set
             vods.get(vods.size() - 1).setVodContent(vodContent);
         }
 
-        return Result.string(page, page + 1, vods.size(), vods.size() * (page + 1), vods);
+        // category list 接口没有 total, 只有 hasMore (1=还有更多)
+        JsonObject dataObj = res.has("data") ? res.getAsJsonObject("data") : new JsonObject();
+        boolean hasMore = dataObj.has("hasMore") && dataObj.get("hasMore").getAsInt() == 1;
+        int pagecount = hasMore ? page + 1 : page;
+        return Result.string(page, pagecount, 20, vods.size(), vods);
     }
 
     /**
@@ -366,7 +369,12 @@ public class BaiduDj extends Spider {
             vods.add(v);
         }
 
-        return Result.string(page, page + 1, vods.size(), vods.size() * (page + 1), vods);
+        // search 接口有 totalCount, 可以精确算 pagecount
+        JsonObject dataObj = res.has("data") ? res.getAsJsonObject("data") : new JsonObject();
+        int total = dataObj.has("totalCount") ? dataObj.get("totalCount").getAsInt() : vods.size();
+        int limit = 20;
+        int pagecount = total > 0 ? (int) Math.ceil((double) total / limit) : page;
+        return Result.string(page, pagecount, limit, total, vods);
     }
 
     // ---------- 工具方法 ----------
