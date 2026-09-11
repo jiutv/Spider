@@ -318,7 +318,13 @@ public class BaiduDj extends Spider {
 
     /**
      * 搜索 (对应 JS 的 search)
+     * 注意: CatVod 引擎会先调用 2 参数版本, 必须委托给 3 参数版本!
      */
+    @Override
+    public String searchContent(String key, boolean quick) throws Exception {
+        return searchContent(key, quick, "1");
+    }
+
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
         int page = 0;
@@ -402,3 +408,4 @@ public class BaiduDj extends Spider {
         }
     }
 }
+
