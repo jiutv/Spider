@@ -131,12 +131,13 @@ public class BaiduDj extends Spider {
         String categoryJson = categoryContent("新剧", "1", false, new HashMap<>());
         if (categoryJson == null || categoryJson.isEmpty()) return Result.string(new ArrayList<>());
         JsonObject root = JsonParser.parseString(categoryJson).getAsJsonObject();
-        JsonArray list = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
+        JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
+        int size = Math.min(arr.size(), 12);
         List<Vod> vods = new ArrayList<>();
-        int size = Math.min(list.size(), 12);
+        com.google.gson.Gson gson = new com.google.gson.Gson();
         for (int i = 0; i < size; i++) {
-            JsonObject it = list.get(i).getAsJsonObject();
-            vods.add(parseVodFromItem(it));
+            Vod v = gson.fromJson(arr.get(i), Vod.class);
+            if (v != null) vods.add(v);
         }
         return Result.string(vods);
     }
