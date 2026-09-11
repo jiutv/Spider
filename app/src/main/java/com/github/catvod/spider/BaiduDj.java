@@ -44,20 +44,55 @@ public class BaiduDj extends Spider {
         CLARITY_ORDER.put("标清", 3);
     }
 
-    /** 综合分类 (全部能搜到有效结果) */
-    private static final List<String> HE = Arrays.asList("全部", "热播", "新剧");
-
     /**
-     * 题材分类 (全部用 search API 验证过有结果, 按 total 从大到小排序)
+     * 分类/题材总表 — 整合网站所有 tab
+     * 综合: 全部, 热播, 新剧, 限时免费, 精选, 独播, 连续剧
+     * 题材: 按热度排序 (total 从大到小)
+     * 注: 带 ⚠️ 的是 search API 搜不到, 需要 fallback 映射
      */
-    private static final List<String> TICAI_LIST = Arrays.asList(
+    private static final List<String> CATEGORIES = Arrays.asList(
+            // ===== 综合 =====
+            "全部", "热播", "新剧", "连续剧",
+            "限时免费", // ⚠️ → 热播
+            "精选",     // ⚠️ → 全部
+            "独播",     // ⚠️ → 全部
+
+            // ===== 题材 (按 total 排序) =====
             "重生", "总裁", "逆袭", "闪婚", "萌宝", "复仇",
             "穿越", "神医", "战神", "赘婿", "都市", "年代",
             "恋爱", "职场", "替嫁", "霸总", "王妃", "家族",
             "神豪", "异能", "先婚后爱", "民国", "甜宠", "种田",
             "鉴宝", "商战", "玄幻", "虐恋", "热血", "奇幻",
-            "真假千金", "冒险", "科幻", "悬疑"
+            "真假千金", "冒险", "科幻", "悬疑",
+            // 以下需要 fallback
+            "现代言情",   // ⚠️ → 恋爱
+            "宫斗宅斗",   // ⚠️ → 宅斗
+            "穿越重生",   // ⚠️ → 重生
+            "家庭伦理",   // ⚠️ → 家族
+            "古代言情",   // ⚠️ → 王妃
+            "武侠武打",   // ⚠️ → 热血
+            "青春校园",   // ⚠️ → 校园
+            "历史架空",   // ⚠️ → 冒险
+            "军旅战争"    // ⚠️ → 热血
     );
+
+    /** 搜不到结果的分类 → 可用的 fallback keyword */
+    private static final Map<String, String> CATEGORY_FALLBACK = new HashMap<>();
+    static {
+        CATEGORY_FALLBACK.put("限时免费", "热播");
+        CATEGORY_FALLBACK.put("精选", "全部");
+        CATEGORY_FALLBACK.put("独播", "全部");
+        CATEGORY_FALLBACK.put("现代言情", "恋爱");
+        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");
+        CATEGORY_FALLBACK.put("穿越重生", "重生");
+        CATEGORY_FALLBACK.put("家庭伦理", "家族");
+        CATEGORY_FALLBACK.put("古代言情", "王妃");
+        CATEGORY_FALLBACK.put("武侠武打", "热血");
+        CATEGORY_FALLBACK.put("单元剧", "全部");
+        CATEGORY_FALLBACK.put("青春校园", "校园");
+        CATEGORY_FALLBACK.put("历史架空", "冒险");
+        CATEGORY_FALLBACK.put("军旅战争", "热血");
+    }
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -118,12 +153,8 @@ public class BaiduDj extends Spider {
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        for (String name : HE) {
+        for (String name : CATEGORIES) {
             classes.add(new Class(name, name));
-        }
-        for (String name : TICAI_LIST) {
-            String typeId = "全部".equals(name) ? "全部题材" : name;
-            classes.add(new Class(typeId, name));
         }
         LinkedHashMap<String, List<com.github.catvod.bean.Filter>> filters = new LinkedHashMap<>();
         return Result.get().classes(classes).filters(filters).string();
@@ -154,21 +185,12 @@ public class BaiduDj extends Spider {
      * ⚠️ feedapi/v1/videoserver/playlets/list 接口需要 version 签名校验, 无法破解
      * 改而委托 search 接口 (不需要 version, 翻页完全有效, 零重叠验证通过)
      *
-     * 综合分类 (HE) → keyword="短剧" (全部热门短剧)
-     * 题材分类 (TICAI) → keyword=题材名 (如 "战神"/"神医"/"都市" 等)
+     * 有 CATEGORY_FALLBACK 的分类 (如"限时免费") search API 搜不到, 用 fallback keyword 替代
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        // 所有分类的 tid 本身就是有效的 search keyword (已全部验证过)
-        // 综合分类: 全部(27)/热播(14)/新剧(1) → 直接用名字搜
-        // 题材分类: 重生(4640)/总裁(3795)/... → 直接用题材名搜
-        // 如果 tid 是 "全部题材" (homeContent 里 TICAI 的全部映射), 用 "全部"
-        String keyword;
-        if ("全部题材".equals(tid)) {
-            keyword = "全部";
-        } else {
-            keyword = tid;
-        }
+        // 优先用 fallback (如果有的话), 否则 tid 本身就是 keyword
+        String keyword = CATEGORY_FALLBACK.getOrDefault(tid, tid);
         return searchContent(keyword, false, pg);
     }
 
