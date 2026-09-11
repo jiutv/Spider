@@ -339,6 +339,10 @@ public class BaiduDj extends Spider {
         inner.addProperty("fe_page_type", "search");
         inner.add("extra", extra);
 
+        long t = System.currentTimeMillis() / 1000L;
+        inner.addProperty("timestamp", t);
+        inner.addProperty("version", Util.MD5(t + "v2"));
+
         String url = HOST + SEARCH_URL;
         JsonObject res = requestListOrSearch(url, inner.toString());
 
