@@ -123,13 +123,11 @@ public class ZhaiNanYS extends Spider {
         vod.setVodName(item.optString("vod_name"));
         vod.setVodPic(item.optString("vod_pic"));
         vod.setVodRemarks(item.optString("vod_remarks"));
-        vod.setVodClass(item.optString("vod_class"));
         vod.setVodActor(item.optString("vod_actor"));
         vod.setVodDirector(item.optString("vod_director"));
         vod.setVodYear(item.optString("vod_year"));
         vod.setVodArea(item.optString("vod_area"));
         vod.setVodContent(item.optString("vod_content"));
-        vod.setVodScore(item.optString("vod_score"));
 
         // 播放源 (PHP vod 标准: vod_play_from 用 $ 分隔多源, vod_play_url 用 # 分隔)
         String playFrom = item.optString("vod_play_from");
