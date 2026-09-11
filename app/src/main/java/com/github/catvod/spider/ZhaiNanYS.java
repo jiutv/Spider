@@ -75,7 +75,7 @@ public class ZhaiNanYS extends Spider {
                 {"45", "综艺片"}, {"46", "大陆综艺"}, {"47", "港台综艺"}, {"48", "日韩综艺"},
                 {"49", "欧美综艺"}
         });
-        // 短剧 (已去掉 "福利"!)
+        // 短剧
         CATEGORY_MAP.put("58", new String[][]{
                 {"58", "短剧大全"}, {"65", "重生民国"}, {"66", "穿越年代"}, {"67", "现代言情"},
                 {"68", "反转爽文"}, {"69", "女恋总裁"}, {"70", "闪婚离婚"}, {"71", "都市脑洞"},
@@ -207,7 +207,13 @@ public class ZhaiNanYS extends Spider {
 
     // ================================================================
     //  搜索 (list + 批量 detail 补图)
+    //  注意: CatVod 引擎会先调用 2 参数版本, 必须委托给 3 参数版本!
     // ================================================================
+
+    @Override
+    public String searchContent(String key, boolean quick) throws Exception {
+        return searchContent(key, quick, "1");
+    }
 
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
