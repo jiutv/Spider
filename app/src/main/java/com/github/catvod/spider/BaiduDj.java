@@ -190,27 +190,45 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 首页推荐 —— 搜 "新" 取前 40 条 (翻 2 页)
-     * 不能用 "新剧" (只有 1 条广告), 也不能走 categoryContent (tid 不是 zh/tc)
+     * 首页推荐 —— 混合 "热播" (翻 2 页) + "新" (翻 4 页)
+     * 合计最多 120 条, 按 vodId 去重后返回
+     *
+     * 注: homeVideoContent 没有 pg 参数, CatVod 引擎只会调一次, 所以"无限翻页"
+     *     首页本身做不到; 真正的无限翻页在分类页 categoryContent 里
      */
     @Override
     public String homeVideoContent() throws Exception {
         List<Vod> vods = new ArrayList<>();
         com.google.gson.Gson gson = new com.google.gson.Gson();
-        // 翻 2 页, 每页 API 返回最多 20 条, 合计最多 40 条
+        java.util.Set<String> seenIds = new java.util.HashSet<>();
+
+        // 数据源 1: 热播 —— 翻 2 页 (2 × 20 = 40)
         for (int page = 1; page <= 2; page++) {
-            String result = searchContent("新", false, String.valueOf(page));
-            if (result == null || result.isEmpty()) break;
-            JsonObject root = JsonParser.parseString(result).getAsJsonObject();
-            JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
-            for (int i = 0; i < arr.size(); i++) {
-                Vod v = gson.fromJson(arr.get(i), Vod.class);
-                if (v != null) vods.add(v);
-            }
+            collectFromSearch("热播", String.valueOf(page), gson, vods, seenIds);
         }
-        // 截断到最多 40 条, 避免极端情况
-        if (vods.size() > 40) vods = vods.subList(0, 40);
+        // 数据源 2: 新 —— 翻 4 页 (4 × 20 = 80)
+        for (int page = 1; page <= 4; page++) {
+            collectFromSearch("新", String.valueOf(page), gson, vods, seenIds);
+        }
+
+        // 去重后最多取 120 条
+        if (vods.size() > 120) vods = vods.subList(0, 120);
         return Result.string(vods);
+    }
+
+    /** 从 searchContent 结果里抽取 Vod 列表, 按 vodId 去重 */
+    private void collectFromSearch(String keyword, String pg, com.google.gson.Gson gson,
+                                   List<Vod> out, java.util.Set<String> seenIds) throws Exception {
+        String result = searchContent(keyword, false, pg);
+        if (result == null || result.isEmpty()) return;
+        JsonObject root = JsonParser.parseString(result).getAsJsonObject();
+        JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
+        for (int i = 0; i < arr.size(); i++) {
+            Vod v = gson.fromJson(arr.get(i), Vod.class);
+            if (v == null || v.getVodId() == null || v.getVodId().isEmpty()) continue;
+            if (!seenIds.add(v.getVodId())) continue; // 已见过, 跳过
+            out.add(v);
+        }
     }
 
     /**
