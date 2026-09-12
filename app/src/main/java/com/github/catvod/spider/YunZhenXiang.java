@@ -133,7 +133,7 @@ public class YunZhenXiang extends Spider {
         } catch (Exception ignored) {}
     }
 
-    private String buildList(String str, int page) throws JSONException {
+    private String buildList(String str, int page) {
         JSONObject result = new JSONObject();
         JSONArray list = new JSONArray();
         if (str != null && !str.isEmpty()) {
