@@ -313,7 +313,7 @@ public class YunZhenXiang extends Spider {
         ensureInit();
         try {
             // 首页推荐用 "全部" 关键词搜索取第一页
-            return searchContent("全部", "1");
+            return searchContent("全部", false, "1");
         } catch (Exception e) {
             return Result.string(new java.util.ArrayList<>());
         }
@@ -384,4 +384,3 @@ public class YunZhenXiang extends Spider {
         }
     }
 }
-
