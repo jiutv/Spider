@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -142,21 +143,25 @@ public class AppRJ extends Spider {
             JSONArray loop = data.optJSONArray("loop");
             addVodItems(loop, all, null);
 
-            // 3. type_vod 子分类段 - 这里有 12 个 section, 每个 section 有子分类名 + 视频列表
+            // 3. type_vod 子分类段
             JSONArray typeVod = data.optJSONArray("type_vod");
             if (typeVod != null) {
                 Set<String> seenIds = new HashSet<>();
-                for (int i = 0; i < all.size(); i++) {
-                    String id = all.get(i).getVodId();
-                    if (id != null) seenIds.add(id);
+                // 先把已有列表的 id 加进去
+                for (Vod v : all) {
+                    // Vod 无 getter, 用反射取 vodId
+                    try {
+                        java.lang.reflect.Field f = Vod.class.getDeclaredField("vodId");
+                        f.setAccessible(true);
+                        String id = (String) f.get(v);
+                        if (id != null) seenIds.add(id);
+                    } catch (Exception ignored) {}
                 }
                 for (int i = 0; i < typeVod.length(); i++) {
                     JSONObject sec = typeVod.optJSONObject(i);
                     if (sec == null) continue;
-                    // 跳过广告段 (type_id = -1)
                     int stid = sec.optInt("type_id", -999);
-                    if (stid == -1) continue;
-                    // 如果指定了 filter, 只取匹配的 section
+                    if (stid == -1) continue; // 跳过广告段
                     String secName = sec.optString("type_name", "");
                     if (filterSection != null && !filterSection.equals(secName)) continue;
                     JSONArray vods = sec.optJSONArray("vod");
