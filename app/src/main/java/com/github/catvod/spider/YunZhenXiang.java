@@ -197,15 +197,20 @@ public class YunZhenXiang extends Spider {
             if (extend.containsKey("year")) year = extend.get("year");
             if (extend.containsKey("sort")) sort = extend.get("sort");
         }
-        // 原接口已恢复: /cache/zhaopian/{type}/地区/类型/年份/排序/page.json
-        // 少儿多一个 参数位置不同
+        // 原接口: /cache/zhaopian/{type}/地区/类型/年份/排序/page.json
+        // 少儿 6 段路径, 其他 5 段
         String url;
         if ("少儿".equals(tid)) {
             url = String.format("%s/cache/zhaopian/%s/全部/全部/全部/%s/%s/%d.json", textURL, tid, year, sort, page);
         } else {
             url = String.format("%s/cache/zhaopian/%s/全部/全部/%s/%s/%d.json", textURL, tid, year, sort, page);
         }
-        return buildList(fetch(url, null), page);
+        String data = fetch(url, null);
+        // fallback: /cache/zhaopian/ 404 或返回空时 (少儿 服务端无缓存), 用搜索 API
+        if (TextUtils.isEmpty(data) || "404 page not found".equalsIgnoreCase(data.trim())) {
+            return searchContent(tid, false, pg);
+        }
+        return buildList(data, page);
     }
 
     @Override
@@ -274,28 +279,36 @@ public class YunZhenXiang extends Spider {
             String[] types = {"剧集", "电影", "综艺", "动漫", "少儿", "纪录片"};
 
             // 年份 Filter: 2026 → 2010
-            JSONArray yearFilter = new JSONArray();
+            JSONArray yearValues = new JSONArray();
             for (int i = 2026; i >= 2010; i--) {
                 JSONObject y = new JSONObject();
                 y.put("n", String.valueOf(i));
                 y.put("v", String.valueOf(i));
-                yearFilter.put(y);
+                yearValues.put(y);
             }
+            JSONObject yearObj = new JSONObject();
+            yearObj.put("key", "year");
+            yearObj.put("name", "年份");
+            yearObj.put("value", yearValues);
 
             // 排序 Filter
-            JSONArray sortFilter = new JSONArray();
+            JSONArray sortValues = new JSONArray();
             JSONObject sortNew = new JSONObject();
             sortNew.put("n", "最新");
             sortNew.put("v", "最新");
-            sortFilter.put(sortNew);
+            sortValues.put(sortNew);
             JSONObject sortHot = new JSONObject();
             sortHot.put("n", "最热");
             sortHot.put("v", "最热");
-            sortFilter.put(sortHot);
+            sortValues.put(sortHot);
+            JSONObject sortObj = new JSONObject();
+            sortObj.put("key", "sort");
+            sortObj.put("name", "排序");
+            sortObj.put("value", sortValues);
 
             JSONArray filterArr = new JSONArray();
-            filterArr.put(yearFilter);
-            filterArr.put(sortFilter);
+            filterArr.put(yearObj);
+            filterArr.put(sortObj);
 
             for (String type : types) {
                 JSONObject cls = new JSONObject();
