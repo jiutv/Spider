@@ -3,7 +3,6 @@ package com.github.catvod.spider;
 import android.content.Context;
 
 import com.github.catvod.bean.Class;
-import com.github.catvod.bean.Filter;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
@@ -22,11 +21,11 @@ import java.util.Map;
 
 /**
  * 百度短剧爬虫 —— 精选短剧/好看短剧
- * 分类结构: 大类(综合/题材) → 小类(通过 Filter 下拉实现)
+ * 分类结构: 平铺 50 个分类 (综合 7 + 题材 43)
  * 数据来源: search API (免费, 无需 version 签名, 翻页稳定)
  *
  * 注意: search API 只做标题关键词匹配, 不是所有分类名都能搜到结果
- *       搜不到或只有 1 条的分类用 fallback 到相关关键词
+ *       搜不到或只有 1 条的分类用 CATEGORY_FALLBACK 映射到可用关键词
  */
 public class BaiduDj extends Spider {
 
@@ -46,74 +45,58 @@ public class BaiduDj extends Spider {
         CLARITY_ORDER.put("标清", 3);
     }
 
-    // ============ 分类层级定义 ============
-    // 大类只有两个: 综合 / 题材 (侧边栏显示)
-    // 小类通过 Filter 下拉选择, value.v 是实际传给 search API 的 query 关键词
-
     /**
-     * 综合类小类 —— 7 个
-     * 格式: {显示名, 实际搜索关键词}
-     * 备注里标注的是 API 实测结果数
+     * 平铺分类总表 —— 50 个
+     * 综合 7 个 + 题材 43 个 (按搜索结果数排序)
+     *
+     * type_id = type_name = 显示名, 直接传给 search API 做 query
+     * 搜不到的在 CATEGORY_FALLBACK 里做映射
      */
-    private static final String[][] SUB_ZHONGHE = {
-            {"全部", "全部"},           // 27 条
-            {"热播", "热播"},           // 14 条
-            {"新剧", "新"},             // 搜"新剧"只有 1 条广告 → "新" 2006 条
-            {"连续剧", "热播"},         // 搜"连续剧"只有 1 条 → "热播" 14 条
-            {"限时免费", "热播"},       // 搜不到 → "热播"
-            {"精选", "热播"},           // 搜不到 → "热播"
-            {"独播", "热播"}            // 搜不到 → "热播"
-    };
+    private static final List<String> CATEGORIES = Arrays.asList(
+            // ===== 综合 (7) =====
+            "全部", "热播", "新剧", "连续剧",
+            "限时免费", "精选", "独播",
 
-    /**
-     * 题材类小类 —— 43 个
-     * 按搜索结果数从多到少排序 (实测 totalCount)
-     */
-    private static final String[][] SUB_TICAI = {
-            {"重生", "重生"},           // 4640
-            {"总裁", "总裁"},           // 3795
-            {"逆袭", "逆袭"},           // 2198
-            {"闪婚", "闪婚"},           // 1546
-            {"萌宝", "萌宝"},           // 1537
-            {"复仇", "复仇"},           // 970
-            {"穿越", "穿越"},           // 849
-            {"神医", "神医"},           // 832
-            {"战神", "战神"},           // 818
-            {"赘婿", "赘婿"},           // 728
-            {"都市", "都市"},           // 722
-            {"年代", "年代"},           // 329
-            {"替嫁", "替嫁"},           // 504
-            {"恋爱", "恋爱"},           // 587
-            {"职场", "职场"},           // 390
-            {"王妃", "王妃"},           // 417
-            {"家族", "家族"},           // 215
-            {"鉴宝", "鉴宝"},           // 341
-            {"先婚后爱", "先婚后爱"},   // 205
-            {"神豪", "神豪"},           // 149
-            {"民国", "民国"},           // 128
-            {"异能", "异能"},           // 63
-            {"校园", "校园"},           // 69  (青春校园 → fallback)
-            {"种田", "种田"},           // 49
-            {"甜宠", "甜宠"},           // 46
-            {"真假千金", "真假千金"},   // 53
-            {"商战", "商战"},           // 33
-            {"虐恋", "虐恋"},           // 35
-            {"热血", "热血"},           // 24
-            {"宅斗", "宅斗"},           // 7   (宫斗宅斗 → fallback)
-            {"冒险", "冒险"},           // 8   (历史架空 → fallback)
-            {"玄幻", "玄幻"},           // 6
-            {"古代言情", "王妃"},       // 搜不到 → fallback 王妃
-            {"现代言情", "恋爱"},       // 搜不到 → fallback 恋爱
-            {"穿越重生", "重生"},       // 搜不到 → fallback 重生
-            {"家庭伦理", "家族"},       // 搜不到 → fallback 家族
-            {"武侠武打", "热血"},       // 搜不到 → fallback 热血
-            {"历史架空", "冒险"},       // 搜不到 → fallback 冒险
-            {"军旅战争", "热血"},       // 搜不到 → fallback 热血
-            {"霸总", "霸总"},           // 308
-            {"科幻", "未来"},           // 搜"科幻"只有 1 条 → "未来" 220 条
-            {"悬疑", "悬疑"},           // 2
-            {"奇幻", "奇幻"}            // 5
-    };
+            // ===== 题材 (43, 按 total 从多到少) =====
+            "重生", "总裁", "逆袭", "闪婚", "萌宝", "复仇",
+            "穿越", "神医", "战神", "赘婿", "都市", "年代",
+            "恋爱", "职场", "替嫁", "霸总", "王妃", "家族",
+            "神豪", "异能", "先婚后爱", "民国", "甜宠", "种田",
+            "鉴宝", "商战", "玄幻", "虐恋", "热血", "奇幻",
+            "真假千金", "冒险", "校园", "宅斗", "科幻", "悬疑",
+            // 以下需要 fallback (API 搜不到或只有 1 条)
+            "现代言情",     // → 恋爱
+            "宫斗宅斗",     // → 宅斗
+            "穿越重生",     // → 重生
+            "家庭伦理",     // → 家族
+            "古代言情",     // → 王妃
+            "武侠武打",     // → 热血
+            "青春校园",     // → 校园
+            "历史架空",     // → 冒险
+            "军旅战争"      // → 热血
+    );
+
+    /** 搜不到或只有 1 条结果的分类 → 可用的 fallback keyword */
+    private static final Map<String, String> CATEGORY_FALLBACK = new HashMap<>();
+    static {
+        // 综合类
+        CATEGORY_FALLBACK.put("新剧", "新");           // 搜"新剧"只有 1 条广告
+        CATEGORY_FALLBACK.put("连续剧", "热播");       // 搜"连续剧"只有 1 条
+        CATEGORY_FALLBACK.put("限时免费", "热播");     // 搜不到
+        CATEGORY_FALLBACK.put("精选", "热播");         // 搜不到
+        CATEGORY_FALLBACK.put("独播", "热播");         // 搜不到
+        // 题材类 —— 只有 1 条或搜不到的
+        CATEGORY_FALLBACK.put("科幻", "未来");          // 搜"科幻"只有 1 条
+        CATEGORY_FALLBACK.put("现代言情", "恋爱");
+        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");
+        CATEGORY_FALLBACK.put("穿越重生", "重生");
+        CATEGORY_FALLBACK.put("家庭伦理", "家族");
+        CATEGORY_FALLBACK.put("古代言情", "王妃");
+        CATEGORY_FALLBACK.put("武侠武打", "热血");
+        CATEGORY_FALLBACK.put("青春校园", "校园");
+        CATEGORY_FALLBACK.put("历史架空", "冒险");
+        CATEGORY_FALLBACK.put("军旅战争", "热血");
+    }
 
     // ============ 网络请求 ============
 
@@ -163,86 +146,44 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 首页分类 —— 返回大类 + 每个大类对应的小类 Filter
-     * 侧边栏显示 "综合" "题材" 两个大类
-     * 点进大类后顶部 Filter 下拉显示该大类下所有小类
+     * 首页分类 —— 平铺返回 50 个分类
+     * type_id = type_name = CATEGORIES 里的名字
      */
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        classes.add(new Class("zh", "综合"));
-        classes.add(new Class("tc", "题材"));
-
-        LinkedHashMap<String, List<Filter>> filters = new LinkedHashMap<>();
-        filters.put("zh", buildSubFilter(SUB_ZHONGHE));
-        filters.put("tc", buildSubFilter(SUB_TICAI));
-
+        for (String name : CATEGORIES) {
+            classes.add(new Class(name, name));
+        }
+        LinkedHashMap<String, List<com.github.catvod.bean.Filter>> filters = new LinkedHashMap<>();
         return Result.get().classes(classes).filters(filters).string();
     }
 
-    /** 构造 Filter —— 小类下拉选项, key="kw" */
-    private List<Filter> buildSubFilter(String[][] subs) {
-        List<Filter.Value> values = new ArrayList<>();
-        for (String[] sub : subs) {
-            values.add(new Filter.Value(sub[0], sub[1]));
-        }
-        return Arrays.asList(new Filter("kw", "分类", values));
-    }
-
     /**
-     * 首页推荐 —— 混合 "热播" (翻 2 页) + "新" (翻 4 页)
-     * 合计最多 120 条, 按 vodId 去重后返回
-     *
-     * 注: homeVideoContent 没有 pg 参数, CatVod 引擎只会调一次, 所以"无限翻页"
-     *     首页本身做不到; 真正的无限翻页在分类页 categoryContent 里
+     * 首页推荐 —— 直接搜 "新" (新剧 fallback) 取前 12 条
      */
     @Override
     public String homeVideoContent() throws Exception {
+        String result = searchContent("新", false, "1");
+        if (result == null || result.isEmpty()) return Result.string(new ArrayList<>());
+        JsonObject root = JsonParser.parseString(result).getAsJsonObject();
+        JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
+        int size = Math.min(arr.size(), 12);
         List<Vod> vods = new ArrayList<>();
         com.google.gson.Gson gson = new com.google.gson.Gson();
-        java.util.Set<String> seenIds = new java.util.HashSet<>();
-
-        // 数据源 1: 热播 —— 翻 2 页 (2 × 20 = 40)
-        for (int page = 1; page <= 2; page++) {
-            collectFromSearch("热播", String.valueOf(page), gson, vods, seenIds);
+        for (int i = 0; i < size; i++) {
+            Vod v = gson.fromJson(arr.get(i), Vod.class);
+            if (v != null) vods.add(v);
         }
-        // 数据源 2: 新 —— 翻 4 页 (4 × 20 = 80)
-        for (int page = 1; page <= 4; page++) {
-            collectFromSearch("新", String.valueOf(page), gson, vods, seenIds);
-        }
-
-        // 去重后最多取 120 条
-        if (vods.size() > 120) vods = vods.subList(0, 120);
         return Result.string(vods);
     }
 
-    /** 从 searchContent 结果里抽取 Vod 列表, 按 vodId 去重 */
-    private void collectFromSearch(String keyword, String pg, com.google.gson.Gson gson,
-                                   List<Vod> out, java.util.Set<String> seenIds) throws Exception {
-        String result = searchContent(keyword, false, pg);
-        if (result == null || result.isEmpty()) return;
-        JsonObject root = JsonParser.parseString(result).getAsJsonObject();
-        JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
-        for (int i = 0; i < arr.size(); i++) {
-            Vod v = gson.fromJson(arr.get(i), Vod.class);
-            if (v == null || v.getVodId() == null || v.getVodId().isEmpty()) continue;
-            if (!seenIds.add(v.getVodId())) continue; // 已见过, 跳过
-            out.add(v);
-        }
-    }
-
     /**
-     * 分类列表 —— 从 extend.get("kw") 取 Filter 选中的小类搜索关键词
-     * 如果用户没选过小类, 综合类默认 "热播", 题材类默认 "重生"
+     * 分类列表 —— 把 tid 当搜索关键词, 有 fallback 的先做映射
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        String keyword;
-        if (extend != null && extend.containsKey("kw") && !extend.get("kw").isEmpty()) {
-            keyword = extend.get("kw");
-        } else {
-            keyword = "zh".equals(tid) ? "热播" : "重生";
-        }
+        String keyword = CATEGORY_FALLBACK.getOrDefault(tid, tid);
         return searchContent(keyword, false, pg);
     }
 
