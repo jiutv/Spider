@@ -12,6 +12,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -20,15 +21,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 百度短剧爬虫 —— 移植自 baidu_dj.js
- * 原始分类: 综合 5 + 题材 29 = 34 个 (严格按 JS 原样)
+ * 百度短剧爬虫 —— 严格移植自 baidu_dj.js
  *
- * list API (feedapi/v1/videoserver/playlets/list) 需要 version 签名 (md5(t+"v2")),
- * 实测签名无效 → 改用 search API (feedapi/v1/videoserver/playlets/search) 替代,
- * 功能等价, 翻页稳定, 免费无签名。
+ * 分类: 综合 5 个 + 题材 29 个 = 34 个 (严格按 JS home() 原样)
  *
- * search API 只做标题关键词匹配, 部分分类名搜不到或只有 1 条,
- * 用 CATEGORY_FALLBACK 映射到可用关键词。
+ * 核心 API: feedapi/v1/videoserver/playlets/list
+ *   - 必填 timestamp (秒级) 和 version = md5(timestamp + "v2")
+ *   - 通过 themes 数组指定综合/题材筛选
+ *   - 每页返回 18 条
+ *
+ * 搜索 API: feedapi/v1/videoserver/playlets/search
+ *   - 用户主动搜索时使用 (无 version 签名)
  */
 public class BaiduDj extends Spider {
 
@@ -36,6 +39,7 @@ public class BaiduDj extends Spider {
 
     private static final String HOST = "https://mbd.baidu.com";
     private static final String DETAIL_HOST = "https://sv.baidu.com";
+    private static final String LIST_URL = "/feedapi/v1/videoserver/playlets/list?service=bdbox";
     private static final String SEARCH_URL = "/feedapi/v1/videoserver/playlets/search?service=bdbox";
     private static final String DETAIL_URL = "/haokan/ui-video/playlet/rec/detail?log=vhk&tn=1020970b&ctn=1008350n&blur=1";
     private static final String PLAY_URL = "/appui/api?cmd=video/relate&log=vhk&tn=1020970b&ctn=1008350n&blur=1";
@@ -48,13 +52,9 @@ public class BaiduDj extends Spider {
         CLARITY_ORDER.put("标清", 3);
     }
 
-    /**
-     * 原始 JS 分类 —— 严格按 baidu_dj.js home() 函数原样恢复
-     * 综合 5 个 (he): 全部, 新剧, 限时免费, 精选, 独播
-     * 题材 29 个 (ticailist)
-     * 合计 34 个
-     */
+    /** JS home() — 综合 5 个 */
     private static final String[] HE = {"全部", "新剧", "限时免费", "精选", "独播"};
+    /** JS home() — 题材 29 个 */
     private static final String[] TICAI = {
             "神医", "连续剧", "都市", "现代言情", "异能", "逆袭", "甜宠", "总裁",
             "萌宝", "战神", "宫斗宅斗", "神豪", "虐恋", "闪婚", "玄幻", "穿越重生",
@@ -62,36 +62,10 @@ public class BaiduDj extends Spider {
             "历史架空", "王妃", "鉴宝", "科幻", "军旅战争", "种田"
     };
 
-    /**
-     * 原始 JS category 的 sub 逻辑:
-     *   if (tid in ["新剧","限时免费","精选","独播"]) sub = tid
-     *   else sub = "新剧"
-     * 现在改用 search API 做关键词匹配, 所以 tid 直接当 query
-     * 搜不到或只有 1 条的做 fallback
-     */
-    private static final Map<String, String> CATEGORY_FALLBACK = new HashMap<>();
-    static {
-        // 综合类 —— search API 搜不到或只有 1 条
-        CATEGORY_FALLBACK.put("新剧", "新");           // 搜"新剧"只有 1 条广告
-        CATEGORY_FALLBACK.put("限时免费", "热播");     // 搜不到
-        CATEGORY_FALLBACK.put("精选", "热播");         // 搜不到
-        CATEGORY_FALLBACK.put("独播", "热播");         // 搜不到
-        // 题材类 —— 搜不到或只有 1 条
-        CATEGORY_FALLBACK.put("连续剧", "热播");       // 搜"连续剧"只有 1 条
-        CATEGORY_FALLBACK.put("科幻", "未来");          // 搜"科幻"只有 1 条
-        CATEGORY_FALLBACK.put("单元剧", "热播");       // 搜不到 → 热播
-        CATEGORY_FALLBACK.put("现代言情", "恋爱");      // 搜不到
-        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");      // 搜不到
-        CATEGORY_FALLBACK.put("穿越重生", "重生");      // 搜不到
-        CATEGORY_FALLBACK.put("家庭伦理", "家族");      // 搜不到
-        CATEGORY_FALLBACK.put("古代言情", "王妃");      // 搜不到
-        CATEGORY_FALLBACK.put("武侠武打", "热血");      // 搜不到
-        CATEGORY_FALLBACK.put("青春校园", "校园");      // 搜不到
-        CATEGORY_FALLBACK.put("历史架空", "冒险");      // 搜不到
-        CATEGORY_FALLBACK.put("军旅战争", "热血");      // 搜不到
-    }
+    /** JS category() — 哪些 tid 放进 sub (综合) 而不是固定 "新剧" */
+    private static final List<String> SUB_OVERRIDE = Arrays.asList("新剧", "限时免费", "精选", "独播");
 
-    // ============ 网络请求 ============
+    // ============ 网络 + 工具 ============
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -101,7 +75,20 @@ public class BaiduDj extends Spider {
         return headers;
     }
 
-    /** 封装 POST form: body 仅含一个 "data" 字段, 值为 JSON 字符串 */
+    /** version = md5(timestamp + "v2") —— 实测有效, list API 必须 */
+    private static String md5Hex(String s) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] bytes = md.digest(s.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 封装 list / search API (POST form, body 里只有一个 "data" 字段) */
     private JsonObject requestListOrSearch(String url, String innerJson) {
         try {
             HashMap<String, String> params = new HashMap<>();
@@ -115,7 +102,7 @@ public class BaiduDj extends Spider {
         }
     }
 
-    /** 封装一般 POST form: 多个 form 字段 */
+    /** 封装一般 POST form (多个字段) */
     private JsonObject requestForm(String url, HashMap<String, String> params) {
         try {
             String resp = OkHttp.post(url, params, getHeaders()).getBody();
@@ -127,7 +114,61 @@ public class BaiduDj extends Spider {
         }
     }
 
-    // ============ Spider 接口实现 ============
+    // ============ list API 构造 ============
+
+    /**
+     * 构造 list API 请求体 —— 严格按 JS category() 逻辑
+     *
+     * JS:
+     *   sub  = ["新剧","限时免费","精选","独播"].includes(tid) ? tid : "新剧"
+     *   tcsub= (tid === "全部" || tid === "全部题材") ? "" : tid
+     *   themes = [
+     *     { kind: "综合", names: [sub] },
+     *     { kind: "题材", names: [tcsub] }
+     *   ]
+     */
+    private String buildListBody(String tid, int page) {
+        long t = System.currentTimeMillis() / 1000;
+        String version = md5Hex(t + "v2");
+
+        String sub = SUB_OVERRIDE.contains(tid) ? tid : "新剧";
+        String tcsub = ("全部".equals(tid) || "全部题材".equals(tid)) ? "" : tid;
+
+        JsonArray themes = new JsonArray();
+        JsonObject theme1 = new JsonObject();
+        theme1.addProperty("kind", "综合");
+        JsonArray names1 = new JsonArray();
+        names1.add(sub);
+        theme1.add("names", names1);
+        themes.add(theme1);
+
+        JsonObject theme2 = new JsonObject();
+        theme2.addProperty("kind", "题材");
+        JsonArray names2 = new JsonArray();
+        names2.add(tcsub);
+        theme2.add("names", names2);
+        themes.add(theme2);
+
+        JsonObject data = new JsonObject();
+        JsonObject extRequest = new JsonObject();
+        extRequest.addProperty("flow_tabid", "13");
+        data.add("extRequest", extRequest);
+        data.addProperty("from", "feed");
+        data.addProperty("page", "channel_video_landing");
+        data.addProperty("pd", "feed");
+        data.addProperty("refreshIndex", page);
+        data.addProperty("cursor", "");
+        data.addProperty("theme", "");
+        data.addProperty("timestamp", t);
+        data.addProperty("version", version);
+        data.add("themes", themes);
+
+        JsonObject wrapper = new JsonObject();
+        wrapper.add("data", data);
+        return wrapper.toString();
+    }
+
+    // ============ Spider 接口 ============
 
     @Override
     public void init(Context context) throws Exception {
@@ -138,20 +179,13 @@ public class BaiduDj extends Spider {
         init(context);
     }
 
-    /**
-     * 首页分类 —— 严格按 JS home() 函数
-     * 综合 he 5 个 + 题材 ticailist 29 个 = 34 个
-     * JS 里题材的 type_id 有个 "全部" → "全部题材" 的特殊处理,
-     * 但 ticailist 里并没有 "全部", 所以不会触发
-     */
+    /** 首页分类 —— 严格按 JS home() */
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        // 综合
         for (String name : HE) {
             classes.add(new Class(name, name));
         }
-        // 题材
         for (String name : TICAI) {
             String typeId = "全部".equals(name) ? "全部题材" : name;
             classes.add(new Class(typeId, name));
@@ -161,13 +195,12 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 首页推荐 —— 按 JS homeVod() 调 category("新剧", 1) 取前 12 条
-     * 注意: 新剧 有 fallback → "新"
+     * 首页推荐 —— 严格按 JS homeVod()
+     * JS: category("新剧", 1, {}, {}) → 取前 12 条
      */
     @Override
     public String homeVideoContent() throws Exception {
-        String keyword = CATEGORY_FALLBACK.getOrDefault("新剧", "新剧");
-        String result = searchContent(keyword, false, "1");
+        String result = categoryContent("新剧", "1", false, new HashMap<>());
         if (result == null || result.isEmpty()) return Result.string(new ArrayList<>());
         JsonObject root = JsonParser.parseString(result).getAsJsonObject();
         JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
@@ -182,16 +215,40 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 分类列表 —— 原 JS category() 用 list API + version 签名, 实测签名无效
-     * 改用 search API 替代, tid 直接当 query, 有 fallback 的先映射
+     * 分类列表 —— 严格按 JS category(), 使用 list API
+     * list API 每页 18 条, 无 totalCount, pagecount 用 pg+1 (跟 JS 一样)
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        String keyword = CATEGORY_FALLBACK.getOrDefault(tid, tid);
-        return searchContent(keyword, false, pg);
+        int page;
+        try { page = Integer.parseInt(pg); } catch (Exception e) { page = 1; }
+        if (page <= 0) page = 1;
+
+        String body = buildListBody(tid, page);
+        JsonObject res = requestListOrSearch(HOST + LIST_URL, body);
+
+        List<Vod> vods = new ArrayList<>();
+        JsonArray items = res.has("data") && res.getAsJsonObject("data").has("items")
+                ? res.getAsJsonObject("data").getAsJsonArray("items") : new JsonArray();
+        for (JsonElement el : items) {
+            JsonObject it = el.getAsJsonObject();
+            String vodId = it.has("collId") ? it.get("collId").getAsString() : "";
+            String vodName = it.has("title") ? it.get("title").getAsString() : "未知标题";
+            String vodPic = it.has("img") ? it.get("img").getAsString() : "";
+            String vodRemarks = it.has("updateStatus") ? it.get("updateStatus").getAsString() : "";
+            String vodContent = it.has("description") ? it.get("description").getAsString() : "";
+            Vod v = new Vod(vodId, vodName, vodPic, vodRemarks);
+            v.setVodContent(vodContent);
+            vods.add(v);
+        }
+
+        int limit = 18;
+        int pagecount = page + 1;
+        int total = vods.size() * pagecount;
+        return Result.string(page, pagecount, limit, total, vods);
     }
 
-    /** 视频详情 —— 原 JS detail() 原样移植 */
+    /** 视频详情 —— 严格按 JS detail() */
     @Override
     public String detailContent(List<String> ids) throws Exception {
         if (ids == null || ids.isEmpty()) return Result.string(new ArrayList<>());
@@ -228,7 +285,7 @@ public class BaiduDj extends Spider {
         return Result.string(vod);
     }
 
-    /** 播放解析 —— 原 JS play() 原样移植 */
+    /** 播放解析 —— 严格按 JS play() */
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         HashMap<String, String> params = new HashMap<>();
@@ -282,8 +339,8 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 搜索 —— 原 JS search() 原样移植
-     * categoryContent 和 homeVideoContent 都调这里
+     * 用户主动搜索 —— 使用 search API (无 version 签名, 按标题关键词匹配)
+     * 这和 JS search() 完全一致
      */
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
