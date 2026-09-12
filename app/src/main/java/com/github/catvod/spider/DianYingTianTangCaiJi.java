@@ -1,6 +1,7 @@
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
+import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import java.io.IOException;
@@ -8,13 +9,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DianYingTianTangCaiJi extends AbsSource {
-
+    // 补上okhttp客户端实例
+    private static final OkHttpClient client = new OkHttpClient();
     private static final String API_BASE = "http://caiji.dyttzyapi.com/api.php/provide/vod/from/dyttm3u8/at/json/";
 
     // ========== 内部硬编码分类：短剧升级成一级大类 ==========
     private JSONArray buildInnerCategories() {
         JSONArray categoriesArray = new JSONArray();
-
         // 电影片
         JSONObject movieObj = new JSONObject();
         movieObj.put("name", "电影片");
@@ -31,7 +32,6 @@ public class DianYingTianTangCaiJi extends AbsSource {
         movieSub.add("伦理片");
         movieObj.put("sub", movieSub);
         categoriesArray.add(movieObj);
-
         // 连续剧
         JSONObject seriesObj = new JSONObject();
         seriesObj.put("name", "连续剧");
@@ -46,7 +46,6 @@ public class DianYingTianTangCaiJi extends AbsSource {
         seriesSub.add("泰国剧");
         seriesObj.put("sub", seriesSub);
         categoriesArray.add(seriesObj);
-
         // 【新增一级大类：短剧】
         JSONObject shortDramaObj = new JSONObject();
         shortDramaObj.put("name", "短剧");
@@ -54,7 +53,6 @@ public class DianYingTianTangCaiJi extends AbsSource {
         shortDramaSub.add("短剧");
         shortDramaObj.put("sub", shortDramaSub);
         categoriesArray.add(shortDramaObj);
-
         // 动漫片
         JSONObject animeObj = new JSONObject();
         animeObj.put("name", "动漫片");
@@ -66,7 +64,6 @@ public class DianYingTianTangCaiJi extends AbsSource {
         animeSub.add("动画片");
         animeObj.put("sub", animeSub);
         categoriesArray.add(animeObj);
-
         // 综艺片
         JSONObject varietyObj = new JSONObject();
         varietyObj.put("name", "综艺片");
@@ -77,7 +74,6 @@ public class DianYingTianTangCaiJi extends AbsSource {
         varietySub.add("欧美综艺");
         varietyObj.put("sub", varietySub);
         categoriesArray.add(varietyObj);
-
         return categoriesArray;
     }
 
@@ -115,13 +111,10 @@ public class DianYingTianTangCaiJi extends AbsSource {
             result.put("list", new JSONArray());
             return result;
         }
-
         JSONArray nestedCate = buildInnerCategories();
         List<String> flatCateList = flatCategories(nestedCate);
-
         result.put("categories", flatCateList);
         result.put("originCategories", nestedCate); // 给魔改UI下拉菜单
-
         result.put("list", apiJson.getJSONArray("list"));
         result.put("page", apiJson.getInteger("page"));
         result.put("pagecount", apiJson.getInteger("pagecount"));
@@ -153,7 +146,7 @@ public class DianYingTianTangCaiJi extends AbsSource {
         return JSON.parseObject(resp);
     }
 
-    // 播放解析
+    // 【修复播放解析，拆分vod_play_url选集】
     @Override
     public JSONObject playerContent(String flag, String id, String vipFlags) throws IOException {
         String url = API_BASE + "?ac=detail&ids=" + id;
@@ -162,8 +155,19 @@ public class DianYingTianTangCaiJi extends AbsSource {
         JSONArray list = data.getJSONArray("list");
         if (list == null || list.isEmpty()) return new JSONObject();
         JSONObject vod = list.getJSONObject(0);
+        String playAll = vod.getString("vod_play_url");
+        // flag就是选集名称，分割$$$取出对应集的链接
+        String[] items = playAll.split("\\$\\$\\$");
+        String realM3u8 = "";
+        for(String item : items){
+            String[] nameUrl = item.split("#");
+            if(nameUrl.length == 2 && nameUrl[0].equals(flag)){
+                realM3u8 = nameUrl[1];
+                break;
+            }
+        }
         JSONObject res = new JSONObject();
-        res.put("url", vod.getString("vod_play_url"));
+        res.put("url", realM3u8);
         return res;
     }
 
