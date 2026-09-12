@@ -3,12 +3,11 @@ package com.github.catvod.spider;
 import android.content.Context;
 
 import com.github.catvod.bean.Class;
+import com.github.catvod.bean.Filter;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-import com.github.catvod.utils.Json;
-import com.github.catvod.utils.Util;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -22,8 +21,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 百度短剧爬虫 —— 移植自百度短剧 JS 规则
- * 基类: Spider
+ * 百度短剧爬虫 —— 精选短剧/好看短剧
+ * 分类结构: 大类(综合/题材) → 小类(通过 Filter 下拉实现)
+ * 数据来源: search API (免费, 无需 version 签名, 翻页稳定)
+ *
+ * 注意: search API 只做标题关键词匹配, 不是所有分类名都能搜到结果
+ *       搜不到或只有 1 条的分类用 fallback 到相关关键词
  */
 public class BaiduDj extends Spider {
 
@@ -31,7 +34,6 @@ public class BaiduDj extends Spider {
 
     private static final String HOST = "https://mbd.baidu.com";
     private static final String DETAIL_HOST = "https://sv.baidu.com";
-    private static final String LIST_URL = "/feedapi/v1/videoserver/playlets/list?service=bdbox";
     private static final String SEARCH_URL = "/feedapi/v1/videoserver/playlets/search?service=bdbox";
     private static final String DETAIL_URL = "/haokan/ui-video/playlet/rec/detail?log=vhk&tn=1020970b&ctn=1008350n&blur=1";
     private static final String PLAY_URL = "/appui/api?cmd=video/relate&log=vhk&tn=1020970b&ctn=1008350n&blur=1";
@@ -44,55 +46,76 @@ public class BaiduDj extends Spider {
         CLARITY_ORDER.put("标清", 3);
     }
 
+    // ============ 分类层级定义 ============
+    // 大类只有两个: 综合 / 题材 (侧边栏显示)
+    // 小类通过 Filter 下拉选择, value.v 是实际传给 search API 的 query 关键词
+
     /**
-     * 分类/题材总表 — 整合网站所有 tab
-     * 综合: 全部, 热播, 新剧, 限时免费, 精选, 独播, 连续剧
-     * 题材: 按热度排序 (total 从大到小)
-     * 注: 带 ⚠️ 的是 search API 搜不到, 需要 fallback 映射
+     * 综合类小类 —— 7 个
+     * 格式: {显示名, 实际搜索关键词}
+     * 备注里标注的是 API 实测结果数
      */
-    private static final List<String> CATEGORIES = Arrays.asList(
-            // ===== 综合 =====
-            "全部", "热播", "新剧", "连续剧",
-            "限时免费", // ⚠️ → 热播
-            "精选",     // ⚠️ → 全部
-            "独播",     // ⚠️ → 全部
+    private static final String[][] SUB_ZHONGHE = {
+            {"全部", "全部"},           // 27 条
+            {"热播", "热播"},           // 14 条
+            {"新剧", "新"},             // 搜"新剧"只有 1 条广告 → "新" 2006 条
+            {"连续剧", "热播"},         // 搜"连续剧"只有 1 条 → "热播" 14 条
+            {"限时免费", "热播"},       // 搜不到 → "热播"
+            {"精选", "热播"},           // 搜不到 → "热播"
+            {"独播", "热播"}            // 搜不到 → "热播"
+    };
 
-            // ===== 题材 (按 total 排序) =====
-            "重生", "总裁", "逆袭", "闪婚", "萌宝", "复仇",
-            "穿越", "神医", "战神", "赘婿", "都市", "年代",
-            "恋爱", "职场", "替嫁", "霸总", "王妃", "家族",
-            "神豪", "异能", "先婚后爱", "民国", "甜宠", "种田",
-            "鉴宝", "商战", "玄幻", "虐恋", "热血", "奇幻",
-            "真假千金", "冒险", "科幻", "悬疑",
-            // 以下需要 fallback
-            "现代言情",   // ⚠️ → 恋爱
-            "宫斗宅斗",   // ⚠️ → 宅斗
-            "穿越重生",   // ⚠️ → 重生
-            "家庭伦理",   // ⚠️ → 家族
-            "古代言情",   // ⚠️ → 王妃
-            "武侠武打",   // ⚠️ → 热血
-            "青春校园",   // ⚠️ → 校园
-            "历史架空",   // ⚠️ → 冒险
-            "军旅战争"    // ⚠️ → 热血
-    );
+    /**
+     * 题材类小类 —— 43 个
+     * 按搜索结果数从多到少排序 (实测 totalCount)
+     */
+    private static final String[][] SUB_TICAI = {
+            {"重生", "重生"},           // 4640
+            {"总裁", "总裁"},           // 3795
+            {"逆袭", "逆袭"},           // 2198
+            {"闪婚", "闪婚"},           // 1546
+            {"萌宝", "萌宝"},           // 1537
+            {"复仇", "复仇"},           // 970
+            {"穿越", "穿越"},           // 849
+            {"神医", "神医"},           // 832
+            {"战神", "战神"},           // 818
+            {"赘婿", "赘婿"},           // 728
+            {"都市", "都市"},           // 722
+            {"年代", "年代"},           // 329
+            {"替嫁", "替嫁"},           // 504
+            {"恋爱", "恋爱"},           // 587
+            {"职场", "职场"},           // 390
+            {"王妃", "王妃"},           // 417
+            {"家族", "家族"},           // 215
+            {"鉴宝", "鉴宝"},           // 341
+            {"先婚后爱", "先婚后爱"},   // 205
+            {"神豪", "神豪"},           // 149
+            {"民国", "民国"},           // 128
+            {"异能", "异能"},           // 63
+            {"校园", "校园"},           // 69  (青春校园 → fallback)
+            {"种田", "种田"},           // 49
+            {"甜宠", "甜宠"},           // 46
+            {"真假千金", "真假千金"},   // 53
+            {"商战", "商战"},           // 33
+            {"虐恋", "虐恋"},           // 35
+            {"热血", "热血"},           // 24
+            {"宅斗", "宅斗"},           // 7   (宫斗宅斗 → fallback)
+            {"冒险", "冒险"},           // 8   (历史架空 → fallback)
+            {"玄幻", "玄幻"},           // 6
+            {"古代言情", "王妃"},       // 搜不到 → fallback 王妃
+            {"现代言情", "恋爱"},       // 搜不到 → fallback 恋爱
+            {"穿越重生", "重生"},       // 搜不到 → fallback 重生
+            {"家庭伦理", "家族"},       // 搜不到 → fallback 家族
+            {"武侠武打", "热血"},       // 搜不到 → fallback 热血
+            {"历史架空", "冒险"},       // 搜不到 → fallback 冒险
+            {"军旅战争", "热血"},       // 搜不到 → fallback 热血
+            {"霸总", "霸总"},           // 308
+            {"科幻", "未来"},           // 搜"科幻"只有 1 条 → "未来" 220 条
+            {"悬疑", "悬疑"},           // 2
+            {"奇幻", "奇幻"}            // 5
+    };
 
-    /** 搜不到结果的分类 → 可用的 fallback keyword */
-    private static final Map<String, String> CATEGORY_FALLBACK = new HashMap<>();
-    static {
-        CATEGORY_FALLBACK.put("限时免费", "热播");
-        CATEGORY_FALLBACK.put("精选", "全部");
-        CATEGORY_FALLBACK.put("独播", "全部");
-        CATEGORY_FALLBACK.put("现代言情", "恋爱");
-        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");
-        CATEGORY_FALLBACK.put("穿越重生", "重生");
-        CATEGORY_FALLBACK.put("家庭伦理", "家族");
-        CATEGORY_FALLBACK.put("古代言情", "王妃");
-        CATEGORY_FALLBACK.put("武侠武打", "热血");
-        CATEGORY_FALLBACK.put("单元剧", "全部");
-        CATEGORY_FALLBACK.put("青春校园", "校园");
-        CATEGORY_FALLBACK.put("历史架空", "冒险");
-        CATEGORY_FALLBACK.put("军旅战争", "热血");
-    }
+    // ============ 网络请求 ============
 
     private HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -102,15 +125,7 @@ public class BaiduDj extends Spider {
         return headers;
     }
 
-    private HashMap<String, String> getPlayHeaders() {
-        HashMap<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", UA);
-        return headers;
-    }
-
-    /**
-     * 封装 POST form 请求: body 仅含一个 "data" 字段，值为 JSON 字符串
-     */
+    /** 封装 POST form: body 仅含一个 "data" 字段, 值为 JSON 字符串 */
     private JsonObject requestListOrSearch(String url, String innerJson) {
         try {
             HashMap<String, String> params = new HashMap<>();
@@ -124,9 +139,7 @@ public class BaiduDj extends Spider {
         }
     }
 
-    /**
-     * 封装一般 POST form 请求: 多个 form 字段
-     */
+    /** 封装一般 POST form: 多个 form 字段 */
     private JsonObject requestForm(String url, HashMap<String, String> params) {
         try {
             String resp = OkHttp.post(url, params, getHeaders()).getBody();
@@ -138,6 +151,8 @@ public class BaiduDj extends Spider {
         }
     }
 
+    // ============ Spider 接口实现 ============
+
     @Override
     public void init(Context context) throws Exception {
     }
@@ -148,29 +163,43 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 返回分类列表 (homeContent 对应 JS 的 home)
+     * 首页分类 —— 返回大类 + 每个大类对应的小类 Filter
+     * 侧边栏显示 "综合" "题材" 两个大类
+     * 点进大类后顶部 Filter 下拉显示该大类下所有小类
      */
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        for (String name : CATEGORIES) {
-            classes.add(new Class(name, name));
-        }
-        LinkedHashMap<String, List<com.github.catvod.bean.Filter>> filters = new LinkedHashMap<>();
+        classes.add(new Class("zh", "综合"));
+        classes.add(new Class("tc", "题材"));
+
+        LinkedHashMap<String, List<Filter>> filters = new LinkedHashMap<>();
+        filters.put("zh", buildSubFilter(SUB_ZHONGHE));
+        filters.put("tc", buildSubFilter(SUB_TICAI));
+
         return Result.get().classes(classes).filters(filters).string();
     }
 
+    /** 构造 Filter —— 小类下拉选项, key="kw" */
+    private List<Filter> buildSubFilter(String[][] subs) {
+        List<Filter.Value> values = new ArrayList<>();
+        for (String[] sub : subs) {
+            values.add(new Filter.Value(sub[0], sub[1]));
+        }
+        return Arrays.asList(new Filter("kw", "分类", values));
+    }
+
     /**
-     * 首页推荐视频 (homeVideoContent 对应 JS 的 homeVod)
-     * JS 里 homeVod 调用 category("新剧",1,{},{}) 再取前 12 条
+     * 首页推荐 —— 搜 "新" 取前 16 条
+     * 不能用 "新剧" (只有 1 条广告), 也不能走 categoryContent (tid 不是 zh/tc)
      */
     @Override
     public String homeVideoContent() throws Exception {
-        String categoryJson = categoryContent("新剧", "1", false, new HashMap<>());
-        if (categoryJson == null || categoryJson.isEmpty()) return Result.string(new ArrayList<>());
-        JsonObject root = JsonParser.parseString(categoryJson).getAsJsonObject();
+        String result = searchContent("新", false, "1");
+        if (result == null || result.isEmpty()) return Result.string(new ArrayList<>());
+        JsonObject root = JsonParser.parseString(result).getAsJsonObject();
         JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
-        int size = Math.min(arr.size(), 12);
+        int size = Math.min(arr.size(), 16);
         List<Vod> vods = new ArrayList<>();
         com.google.gson.Gson gson = new com.google.gson.Gson();
         for (int i = 0; i < size; i++) {
@@ -181,22 +210,21 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 分类列表
-     * ⚠️ feedapi/v1/videoserver/playlets/list 接口需要 version 签名校验, 无法破解
-     * 改而委托 search 接口 (不需要 version, 翻页完全有效, 零重叠验证通过)
-     *
-     * 有 CATEGORY_FALLBACK 的分类 (如"限时免费") search API 搜不到, 用 fallback keyword 替代
+     * 分类列表 —— 从 extend.get("kw") 取 Filter 选中的小类搜索关键词
+     * 如果用户没选过小类, 综合类默认 "热播", 题材类默认 "重生"
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        // 优先用 fallback (如果有的话), 否则 tid 本身就是 keyword
-        String keyword = CATEGORY_FALLBACK.getOrDefault(tid, tid);
+        String keyword;
+        if (extend != null && extend.containsKey("kw") && !extend.get("kw").isEmpty()) {
+            keyword = extend.get("kw");
+        } else {
+            keyword = "zh".equals(tid) ? "热播" : "重生";
+        }
         return searchContent(keyword, false, pg);
     }
 
-    /**
-     * 视频详情 (对应 JS 的 detail)
-     */
+    /** 视频详情 */
     @Override
     public String detailContent(List<String> ids) throws Exception {
         if (ids == null || ids.isEmpty()) return Result.string(new ArrayList<>());
@@ -210,11 +238,8 @@ public class BaiduDj extends Spider {
         JsonObject res = requestForm(url, params);
 
         JsonObject dthtml = res.has("data") ? res.getAsJsonObject("data") : new JsonObject();
-
         JsonArray vids = dthtml.has("vid_list") ? dthtml.getAsJsonArray("vid_list") : new JsonArray();
-        if (vids.size() == 0) {
-            return Result.string(new ArrayList<>());
-        }
+        if (vids.size() == 0) return Result.string(new ArrayList<>());
 
         List<String> playItems = new ArrayList<>();
         for (int i = 0; i < vids.size(); i++) {
@@ -233,13 +258,10 @@ public class BaiduDj extends Spider {
         vod.setVodYear(dthtml.has("create_time") ? dthtml.get("create_time").getAsString() : "");
         vod.setVodPlayFrom("百度短剧");
         vod.setVodPlayUrl(String.join("#", playItems));
-
         return Result.string(vod);
     }
 
-    /**
-     * 播放解析 (对应 JS 的 play)
-     */
+    /** 播放解析 */
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         HashMap<String, String> params = new HashMap<>();
@@ -255,9 +277,7 @@ public class BaiduDj extends Spider {
                 ? res.getAsJsonObject("video/relate").getAsJsonObject("data").getAsJsonObject("cur_video")
                 : null;
 
-        if (video == null || !video.has("clarityUrl")) {
-            return Result.error("获取播放链接失败");
-        }
+        if (video == null || !video.has("clarityUrl")) return Result.error("获取播放链接失败");
 
         JsonArray clarityUrl = video.getAsJsonArray("clarityUrl");
         List<LinkItem> links = new ArrayList<>();
@@ -270,24 +290,17 @@ public class BaiduDj extends Spider {
             int order = CLARITY_ORDER.containsKey(title) ? CLARITY_ORDER.get(title) : 999;
             links.add(new LinkItem(title, link, order));
         }
-
         if (links.isEmpty()) return Result.error("暂无可用播放地址");
-
         links.sort((a, b) -> Integer.compare(a.order, b.order));
 
         List<String> flat = new ArrayList<>();
-        for (LinkItem it : links) {
-            flat.add(it.title);
-            flat.add(it.url);
-        }
+        for (LinkItem it : links) { flat.add(it.title); flat.add(it.url); }
 
-        // 返回 JSON: parse=0, url=[title,url,...], header={User-Agent, Referer}
         com.google.gson.JsonObject headerObj = new com.google.gson.JsonObject();
         headerObj.addProperty("User-Agent", UA);
         headerObj.addProperty("Referer", HOST);
         String headerJson = new com.google.gson.Gson().toJson(headerObj);
 
-        // 构造 Result
         com.google.gson.JsonObject result = new com.google.gson.JsonObject();
         result.addProperty("parse", 0);
         result.add("url", new com.google.gson.Gson().toJsonTree(flat));
@@ -295,24 +308,29 @@ public class BaiduDj extends Spider {
         return result.toString();
     }
 
-    /**
-     * 搜索 (对应 JS 的 search)
-     * 注意: CatVod 引擎会先调用 2 参数版本, 必须委托给 3 参数版本!
-     */
+    /** 搜索 —— 2 参数委托给 3 参数 */
     @Override
     public String searchContent(String key, boolean quick) throws Exception {
         return searchContent(key, quick, "1");
     }
 
+    /**
+     * 搜索 —— 核心方法
+     * categoryContent 和 homeVideoContent 都调这里
+     */
     @Override
     public String searchContent(String key, boolean quick, String pg) throws Exception {
-        int page = 0;
+        int page;
         try { page = Integer.parseInt(pg); } catch (Exception e) { page = 1; }
         if (page <= 0) page = 1;
 
+        JsonObject inner = new JsonObject();
+        inner.addProperty("query", key);
+        inner.addProperty("page", page);
         JsonArray attribute = new JsonArray();
         attribute.add("title");
-
+        inner.add("attribute", attribute);
+        inner.addProperty("fe_page_type", "search");
         JsonObject extra = new JsonObject();
         extra.addProperty("tab_id", "216");
         extra.addProperty("flow_tabid", "13");
@@ -320,19 +338,9 @@ public class BaiduDj extends Spider {
         extra.addProperty("from", "feed");
         extra.addProperty("tab_type", "搜索");
         extra.addProperty("sub_template", "playlet_search_result");
-
-        JsonObject inner = new JsonObject();
-        inner.addProperty("query", key);
-        inner.addProperty("page", page);
-        inner.add("attribute", attribute);
-        inner.addProperty("fe_page_type", "search");
         inner.add("extra", extra);
 
-        // 注意: JS search 里没有 timestamp/version (只有 category 才有)
-        // 不要加, 否则可能被 API 拒绝
-
-        String url = HOST + SEARCH_URL;
-        JsonObject res = requestListOrSearch(url, inner.toString());
+        JsonObject res = requestListOrSearch(HOST + SEARCH_URL, inner.toString());
 
         List<Vod> vods = new ArrayList<>();
         JsonArray itemList = res.has("data") && res.getAsJsonObject("data").has("itemList")
@@ -354,7 +362,6 @@ public class BaiduDj extends Spider {
             vods.add(v);
         }
 
-        // search 接口有 totalCount, 可以精确算 pagecount
         JsonObject dataObj = res.has("data") ? res.getAsJsonObject("data") : new JsonObject();
         int total = dataObj.has("totalCount") ? dataObj.get("totalCount").getAsInt() : vods.size();
         int limit = 20;
@@ -362,28 +369,14 @@ public class BaiduDj extends Spider {
         return Result.string(page, pagecount, limit, total, vods);
     }
 
-    // ---------- 工具方法 ----------
-
-    private Vod parseVodFromItem(JsonObject it) {
-        String vodId = it.has("collId") ? it.get("collId").getAsString() : "";
-        String vodName = it.has("title") ? it.get("title").getAsString() : "未知标题";
-        String vodPic = it.has("img") ? it.get("img").getAsString() : "";
-        String vodRemarks = it.has("updateStatus") ? it.get("updateStatus").getAsString() : "";
-        Vod v = new Vod(vodId, vodName, vodPic, vodRemarks);
-        String vodContent = it.has("description") ? it.get("description").getAsString() : "";
-        v.setVodContent(vodContent);
-        return v;
-    }
+    // ============ 工具类 ============
 
     private static class LinkItem {
         String title;
         String url;
         int order;
-
         LinkItem(String title, String url, int order) {
-            this.title = title;
-            this.url = url;
-            this.order = order;
+            this.title = title; this.url = url; this.order = order;
         }
     }
 }
