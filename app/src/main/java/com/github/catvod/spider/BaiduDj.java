@@ -20,12 +20,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 百度短剧爬虫 —— 精选短剧/好看短剧
- * 分类结构: 平铺 50 个分类 (综合 7 + 题材 43)
- * 数据来源: search API (免费, 无需 version 签名, 翻页稳定)
+ * 百度短剧爬虫 —— 移植自 baidu_dj.js
+ * 原始分类: 综合 5 + 题材 29 = 34 个 (严格按 JS 原样)
  *
- * 注意: search API 只做标题关键词匹配, 不是所有分类名都能搜到结果
- *       搜不到或只有 1 条的分类用 CATEGORY_FALLBACK 映射到可用关键词
+ * list API (feedapi/v1/videoserver/playlets/list) 需要 version 签名 (md5(t+"v2")),
+ * 实测签名无效 → 改用 search API (feedapi/v1/videoserver/playlets/search) 替代,
+ * 功能等价, 翻页稳定, 免费无签名。
+ *
+ * search API 只做标题关键词匹配, 部分分类名搜不到或只有 1 条,
+ * 用 CATEGORY_FALLBACK 映射到可用关键词。
  */
 public class BaiduDj extends Spider {
 
@@ -46,56 +49,46 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 平铺分类总表 —— 50 个
-     * 综合 7 个 + 题材 43 个 (按搜索结果数排序)
-     *
-     * type_id = type_name = 显示名, 直接传给 search API 做 query
-     * 搜不到的在 CATEGORY_FALLBACK 里做映射
+     * 原始 JS 分类 —— 严格按 baidu_dj.js home() 函数原样恢复
+     * 综合 5 个 (he): 全部, 新剧, 限时免费, 精选, 独播
+     * 题材 29 个 (ticailist)
+     * 合计 34 个
      */
-    private static final List<String> CATEGORIES = Arrays.asList(
-            // ===== 综合 (7) =====
-            "全部", "热播", "新剧", "连续剧",
-            "限时免费", "精选", "独播",
+    private static final String[] HE = {"全部", "新剧", "限时免费", "精选", "独播"};
+    private static final String[] TICAI = {
+            "神医", "连续剧", "都市", "现代言情", "异能", "逆袭", "甜宠", "总裁",
+            "萌宝", "战神", "宫斗宅斗", "神豪", "虐恋", "闪婚", "玄幻", "穿越重生",
+            "年代", "家庭伦理", "古代言情", "武侠武打", "赘婿", "单元剧", "青春校园",
+            "历史架空", "王妃", "鉴宝", "科幻", "军旅战争", "种田"
+    };
 
-            // ===== 题材 (43, 按 total 从多到少) =====
-            "重生", "总裁", "逆袭", "闪婚", "萌宝", "复仇",
-            "穿越", "神医", "战神", "赘婿", "都市", "年代",
-            "恋爱", "职场", "替嫁", "霸总", "王妃", "家族",
-            "神豪", "异能", "先婚后爱", "民国", "甜宠", "种田",
-            "鉴宝", "商战", "玄幻", "虐恋", "热血", "奇幻",
-            "真假千金", "冒险", "校园", "宅斗", "科幻", "悬疑",
-            // 以下需要 fallback (API 搜不到或只有 1 条)
-            "现代言情",     // → 恋爱
-            "宫斗宅斗",     // → 宅斗
-            "穿越重生",     // → 重生
-            "家庭伦理",     // → 家族
-            "古代言情",     // → 王妃
-            "武侠武打",     // → 热血
-            "青春校园",     // → 校园
-            "历史架空",     // → 冒险
-            "军旅战争"      // → 热血
-    );
-
-    /** 搜不到或只有 1 条结果的分类 → 可用的 fallback keyword */
+    /**
+     * 原始 JS category 的 sub 逻辑:
+     *   if (tid in ["新剧","限时免费","精选","独播"]) sub = tid
+     *   else sub = "新剧"
+     * 现在改用 search API 做关键词匹配, 所以 tid 直接当 query
+     * 搜不到或只有 1 条的做 fallback
+     */
     private static final Map<String, String> CATEGORY_FALLBACK = new HashMap<>();
     static {
-        // 综合类
+        // 综合类 —— search API 搜不到或只有 1 条
         CATEGORY_FALLBACK.put("新剧", "新");           // 搜"新剧"只有 1 条广告
-        CATEGORY_FALLBACK.put("连续剧", "热播");       // 搜"连续剧"只有 1 条
         CATEGORY_FALLBACK.put("限时免费", "热播");     // 搜不到
         CATEGORY_FALLBACK.put("精选", "热播");         // 搜不到
         CATEGORY_FALLBACK.put("独播", "热播");         // 搜不到
-        // 题材类 —— 只有 1 条或搜不到的
+        // 题材类 —— 搜不到或只有 1 条
+        CATEGORY_FALLBACK.put("连续剧", "热播");       // 搜"连续剧"只有 1 条
         CATEGORY_FALLBACK.put("科幻", "未来");          // 搜"科幻"只有 1 条
-        CATEGORY_FALLBACK.put("现代言情", "恋爱");
-        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");
-        CATEGORY_FALLBACK.put("穿越重生", "重生");
-        CATEGORY_FALLBACK.put("家庭伦理", "家族");
-        CATEGORY_FALLBACK.put("古代言情", "王妃");
-        CATEGORY_FALLBACK.put("武侠武打", "热血");
-        CATEGORY_FALLBACK.put("青春校园", "校园");
-        CATEGORY_FALLBACK.put("历史架空", "冒险");
-        CATEGORY_FALLBACK.put("军旅战争", "热血");
+        CATEGORY_FALLBACK.put("单元剧", "热播");       // 搜不到 → 热播
+        CATEGORY_FALLBACK.put("现代言情", "恋爱");      // 搜不到
+        CATEGORY_FALLBACK.put("宫斗宅斗", "宅斗");      // 搜不到
+        CATEGORY_FALLBACK.put("穿越重生", "重生");      // 搜不到
+        CATEGORY_FALLBACK.put("家庭伦理", "家族");      // 搜不到
+        CATEGORY_FALLBACK.put("古代言情", "王妃");      // 搜不到
+        CATEGORY_FALLBACK.put("武侠武打", "热血");      // 搜不到
+        CATEGORY_FALLBACK.put("青春校园", "校园");      // 搜不到
+        CATEGORY_FALLBACK.put("历史架空", "冒险");      // 搜不到
+        CATEGORY_FALLBACK.put("军旅战争", "热血");      // 搜不到
     }
 
     // ============ 网络请求 ============
@@ -146,25 +139,35 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 首页分类 —— 平铺返回 50 个分类
-     * type_id = type_name = CATEGORIES 里的名字
+     * 首页分类 —— 严格按 JS home() 函数
+     * 综合 he 5 个 + 题材 ticailist 29 个 = 34 个
+     * JS 里题材的 type_id 有个 "全部" → "全部题材" 的特殊处理,
+     * 但 ticailist 里并没有 "全部", 所以不会触发
      */
     @Override
     public String homeContent(boolean filter) throws Exception {
         List<Class> classes = new ArrayList<>();
-        for (String name : CATEGORIES) {
+        // 综合
+        for (String name : HE) {
             classes.add(new Class(name, name));
+        }
+        // 题材
+        for (String name : TICAI) {
+            String typeId = "全部".equals(name) ? "全部题材" : name;
+            classes.add(new Class(typeId, name));
         }
         LinkedHashMap<String, List<com.github.catvod.bean.Filter>> filters = new LinkedHashMap<>();
         return Result.get().classes(classes).filters(filters).string();
     }
 
     /**
-     * 首页推荐 —— 直接搜 "新" (新剧 fallback) 取前 12 条
+     * 首页推荐 —— 按 JS homeVod() 调 category("新剧", 1) 取前 12 条
+     * 注意: 新剧 有 fallback → "新"
      */
     @Override
     public String homeVideoContent() throws Exception {
-        String result = searchContent("新", false, "1");
+        String keyword = CATEGORY_FALLBACK.getOrDefault("新剧", "新剧");
+        String result = searchContent(keyword, false, "1");
         if (result == null || result.isEmpty()) return Result.string(new ArrayList<>());
         JsonObject root = JsonParser.parseString(result).getAsJsonObject();
         JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
@@ -179,7 +182,8 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 分类列表 —— 把 tid 当搜索关键词, 有 fallback 的先做映射
+     * 分类列表 —— 原 JS category() 用 list API + version 签名, 实测签名无效
+     * 改用 search API 替代, tid 直接当 query, 有 fallback 的先映射
      */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
@@ -187,7 +191,7 @@ public class BaiduDj extends Spider {
         return searchContent(keyword, false, pg);
     }
 
-    /** 视频详情 */
+    /** 视频详情 —— 原 JS detail() 原样移植 */
     @Override
     public String detailContent(List<String> ids) throws Exception {
         if (ids == null || ids.isEmpty()) return Result.string(new ArrayList<>());
@@ -224,7 +228,7 @@ public class BaiduDj extends Spider {
         return Result.string(vod);
     }
 
-    /** 播放解析 */
+    /** 播放解析 —— 原 JS play() 原样移植 */
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         HashMap<String, String> params = new HashMap<>();
@@ -278,7 +282,7 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 搜索 —— 核心方法
+     * 搜索 —— 原 JS search() 原样移植
      * categoryContent 和 homeVideoContent 都调这里
      */
     @Override
