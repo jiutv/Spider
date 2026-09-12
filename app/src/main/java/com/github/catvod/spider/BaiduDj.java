@@ -190,22 +190,26 @@ public class BaiduDj extends Spider {
     }
 
     /**
-     * 首页推荐 —— 搜 "新" 取前 16 条
+     * 首页推荐 —— 搜 "新" 取前 40 条 (翻 2 页)
      * 不能用 "新剧" (只有 1 条广告), 也不能走 categoryContent (tid 不是 zh/tc)
      */
     @Override
     public String homeVideoContent() throws Exception {
-        String result = searchContent("新", false, "1");
-        if (result == null || result.isEmpty()) return Result.string(new ArrayList<>());
-        JsonObject root = JsonParser.parseString(result).getAsJsonObject();
-        JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
-        int size = Math.min(arr.size(), 16);
         List<Vod> vods = new ArrayList<>();
         com.google.gson.Gson gson = new com.google.gson.Gson();
-        for (int i = 0; i < size; i++) {
-            Vod v = gson.fromJson(arr.get(i), Vod.class);
-            if (v != null) vods.add(v);
+        // 翻 2 页, 每页 API 返回最多 20 条, 合计最多 40 条
+        for (int page = 1; page <= 2; page++) {
+            String result = searchContent("新", false, String.valueOf(page));
+            if (result == null || result.isEmpty()) break;
+            JsonObject root = JsonParser.parseString(result).getAsJsonObject();
+            JsonArray arr = root.has("list") ? root.getAsJsonArray("list") : new JsonArray();
+            for (int i = 0; i < arr.size(); i++) {
+                Vod v = gson.fromJson(arr.get(i), Vod.class);
+                if (v != null) vods.add(v);
+            }
         }
+        // 截断到最多 40 条, 避免极端情况
+        if (vods.size() > 40) vods = vods.subList(0, 40);
         return Result.string(vods);
     }
 
