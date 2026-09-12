@@ -134,36 +134,40 @@ public class YunZhenXiang extends Spider {
     }
 
     private String buildList(String str, int page) {
-        JSONObject result = new JSONObject();
-        JSONArray list = new JSONArray();
-        if (str != null && !str.isEmpty()) {
-            try {
-                JSONArray arr = new JSONArray(str);
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject item = arr.getJSONObject(i);
-                    JSONObject vod = new JSONObject();
-                    vod.put("vod_id", item.optString("videoId"));
-                    vod.put("vod_name", item.optString("videoName"));
-                    String pic = item.optString("fengmiantu");
-                    if (!pic.startsWith("http")) pic = resourceURL + pic;
-                    vod.put("vod_pic", pic);
-                    vod.put("vod_remarks", item.optString("serialDesc"));
-                    JSONObject style = new JSONObject();
-                    style.put("type", "movie");
-                    style.put("ratio", 0.75d);
-                    vod.put("style", style);
-                    list.put(vod);
-                }
-            } catch (Exception ignored) {}
+        try {
+            JSONObject result = new JSONObject();
+            JSONArray list = new JSONArray();
+            if (str != null && !str.isEmpty()) {
+                try {
+                    JSONArray arr = new JSONArray(str);
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject item = arr.getJSONObject(i);
+                        JSONObject vod = new JSONObject();
+                        vod.put("vod_id", item.optString("videoId"));
+                        vod.put("vod_name", item.optString("videoName"));
+                        String pic = item.optString("fengmiantu");
+                        if (!pic.startsWith("http")) pic = resourceURL + pic;
+                        vod.put("vod_pic", pic);
+                        vod.put("vod_remarks", item.optString("serialDesc"));
+                        JSONObject style = new JSONObject();
+                        style.put("type", "movie");
+                        style.put("ratio", 0.75d);
+                        vod.put("style", style);
+                        list.put(vod);
+                    }
+                } catch (Exception ignored) {}
+            }
+            result.put("list", list);
+            result.put("page", page);
+            int pageCount = page;
+            if (list.length() > 0) pageCount = page + 1;
+            result.put("pagecount", pageCount);
+            result.put("limit", 20);
+            result.put("total", 9999);
+            return result.toString();
+        } catch (Exception e) {
+            return "{}";
         }
-        result.put("list", list);
-        result.put("page", page);
-        int pageCount = page;
-        if (list.length() > 0) pageCount = page + 1;
-        result.put("pagecount", pageCount);
-        result.put("limit", 20);
-        result.put("total", 9999);
-        return result.toString();
     }
 
     private String md5(String str) {
