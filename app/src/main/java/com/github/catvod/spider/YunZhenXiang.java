@@ -14,6 +14,8 @@ import com.github.catvod.net.OkHttp;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,42 +34,59 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 云帧享 / 秒播影视 (baiyunvideo)
+ * 云帧享 / 秒播影视 (baiyunvideo app 真实 API)
  *
- * 后端限制 (实测):
- *   只有一个可用 API: /vc/api/search/{keyword}/{page}.json
- *   不是结构化分类 API, 是关键词搜索
- *   但搜索结果自带 typeName / class / region / year / score 元数据
+ * 后端事实 (反编译 app + 实际测试 2026-09-13):
  *
- *   原始 ZJAPI 分类缓存 /cache/zhaopian/... 全部 404 (服务端下线了)
+ *   唯一活 API: GET /vc/api/search/{keyword}/{page}.json
+ *     每页 50 条, 纯标题关键词匹配 (不是结构化分类 API)
+ *     POST /vc/api/search/ 全部返回 {"code":1,"msg":"请输入搜索关键词"}, 不解析任何 body
+ *     /cache/zhaopian/... 分类缓存全 404
  *
- * 策略:
- *   7 大类 (首页/剧集/电影/综艺/动漫/少儿/纪录片)
- *   每大类下 4 组 Filter (题材/地区/年份/排序)
- *   用多关键词合并搜索 → 按 typeName 过滤大类 → 按 class/region/year 过滤 → 排序 → 本地分页
+ *   index_url: https://ss.trgfd.cn/cache/index/com.baiyunvideo.app.json
+ *     channels = [首页,剧集,电影,综艺,动漫,少儿,纪录片]
+ *     xinRanks[].types = [全部,大陆剧,美剧,韩剧,英剧,泰剧,日剧,台剧,港剧,电影,
+ *                         国内综艺,国外综艺,国漫,日漫,少儿,纪录片]
+ *     ranks = [热播榜,飙升榜,热搜榜,新片榜,剧集,电影,综艺,动漫,少儿,纪录片]
+ *
+ *   策略 (对齐 app 真实分类结构):
+ *     7 大类 → 每类映射到几组 xinRanks types 当搜索关键词池
+ *     翻 MAX_SEARCH_PAGES 页, 去重合并, 按 score/year 排序, 本地分页
+ *     再加 Filter (榜单 + 题材 + 年份 + 排序) 二次过滤
+ *
+ *   app 真实行为:
+ *     搜"大陆剧" → 标题含"大陆剧"的影片 (typeName 混合: 电影/剧集/综艺...)
+ *     搜"热播榜" → 标题含"热播榜"的影片 (typeName 混合, 剧集偏多)
+ *     搜"纪录片" → 标题含"纪录片"的影片 (2 条真 typeName=纪录片)
+ *     → 后端就这么设计的, 不是 bug
  */
 public class YunZhenXiang extends Spider {
 
-    /** AES-256 key, 从 APK libkeys.so 硬提取 */
+    /** 硬编码 AES-256 key, 从 APK libkeys.so 提取 */
     private static final String AES_KEY = "qvn1u7FCfu8uaolp980i8uVHVS8Dxih7";
     private static final String INDEX_URL = "https://ss.trgfd.cn/cache/index/com.baiyunvideo.app.json";
 
+    /** 榜单关键词 (首页 + 每个 channel 都可以搜) */
+    private static final String[] RANK_KEYWORDS = {"热播榜", "飙升榜", "热搜榜", "新片榜", "高分榜"};
+
     /**
-     * 7 大类 → 搜索关键词池 (每个关键词翻 MAX_SEARCH_PAGES 页)
-     * 合并后按 typeName 精确过滤大类
+     * 7 大类 → 搜索关键词池 (对齐 app channels + xinRanks types)
+     * 每个关键词翻 MAX_SEARCH_PAGES 页去重合并
+     *
+     * 注: 不再做 typeName 精滤 —— 后端搜索 API 是标题关键词匹配, 精滤反而把内容过滤没了
      */
     private static final String[][][] CATEGORY_CONFIG = {
-            // {tid, 显示名, typeName匹配值, 搜索关键词池...}
-            {{"首页", "首页", ""}, {"全部", "热门", "推荐"}},
-            {{"剧集", "剧集", "剧集"}, {"剧集", "电视剧", "大陆剧", "韩剧", "日剧", "美剧", "港剧", "台剧", "泰剧", "英剧"}},
-            {{"电影", "电影", "电影"}, {"电影", "新片", "大片"}},
-            {{"综艺", "综艺", "综艺"}, {"综艺", "真人秀", "脱口秀", "选秀"}},
-            {{"动漫", "动漫", "动漫"}, {"动漫", "动画", "国漫", "日漫"}},
-            {{"少儿", "少儿", "少儿"}, {"少儿", "儿童", "动画电影"}},
-            {{"纪录片", "纪录片", "纪录片"}, {"纪录片", "纪实"}}
+            // {tid,    显示名,  搜索关键词池...}
+            {{"首页",  "首页",   RANK_KEYWORDS}},          // 首页用所有榜单
+            {{"剧集",  "剧集",   new String[]{"大陆剧","美剧","韩剧","英剧","泰剧","日剧","台剧","港剧","热播榜"}}},
+            {{"电影",  "电影",   new String[]{"电影","热播榜","高分榜"}}},
+            {{"综艺",  "综艺",   new String[]{"国内综艺","国外综艺","热播榜"}}},
+            {{"动漫",  "动漫",   new String[]{"国漫","日漫","热播榜"}}},
+            {{"少儿",  "少儿",   new String[]{"少儿"}}},
+            {{"纪录片","纪录片", new String[]{"纪录片"}}}
     };
 
-    private static final int MAX_SEARCH_PAGES = 3; // 每个关键词翻 3 页, 每页 50 条
+    private static final int MAX_SEARCH_PAGES = 3; // 每个关键词翻 3 页 = 150 条, 合并去重
 
     private String textURL = "https://js.trgfd.cn";
     private String resourceURL = "https://img.zqykfz.cn";
@@ -89,9 +108,7 @@ public class YunZhenXiang extends Spider {
                     new SecretKeySpec(AES_KEY.getBytes("UTF-8"), "AES"),
                     new GCMParameterSpec(128, nonce));
             return new String(cipher.doFinal(ciphertextWithTag), "UTF-8");
-        } catch (Exception e) {
-            return "";
-        }
+        } catch (Exception e) { return ""; }
     }
 
     // ============ HTTP ============
@@ -101,9 +118,7 @@ public class YunZhenXiang extends Spider {
             Map<String, String> h = new HashMap<>(headers);
             String result = OkHttp.string(url, h);
             return TextUtils.isEmpty(result) ? null : result;
-        } catch (Exception e) {
-            return null;
-        }
+        } catch (Exception e) { return null; }
     }
 
     // ============ 初始化 ============
@@ -152,16 +167,17 @@ public class YunZhenXiang extends Spider {
     }
 
     /**
-     * 多关键词搜索合并 + 按 typeName 过滤
-     * 返回原始 JSONArray list (每条带 typeName/class/region/year/score)
+     * 多关键词翻页合并 + 去重
+     * 不做 typeName 精滤 —— 后端搜索是标题关键词匹配
      */
-    private List<JSONObject> fetchAndFilter(String[] keywords, String typeNameFilter) {
+    private List<JSONObject> fetchAll(String[] keywords) {
         List<JSONObject> merged = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
         for (String kw : keywords) {
             for (int pg = 1; pg <= MAX_SEARCH_PAGES; pg++) {
                 try {
-                    String url = textURL + "/vc/api/search/" + kw + "/" + pg + ".json";
+                    String encKw = URLEncoder.encode(kw, StandardCharsets.UTF_8.name()).replace("+", "%20");
+                    String url = textURL + "/vc/api/search/" + encKw + "/" + pg + ".json";
                     String json = fetch(url);
                     if (json == null) break;
                     JSONArray arr = new JSONArray(json);
@@ -170,28 +186,29 @@ public class YunZhenXiang extends Spider {
                         JSONObject item = arr.getJSONObject(i);
                         String id = String.valueOf(item.optInt("videoId", 0));
                         if (!seenIds.add(id)) continue;
-                        // 按 typeName 过滤 (空 = 不过滤, 用于首页)
-                        if (!TextUtils.isEmpty(typeNameFilter)) {
-                            String tn = item.optString("typeName", "");
-                            if (!typeNameFilter.equals(tn)) continue;
-                        }
                         merged.add(item);
                     }
-                } catch (Exception e) {
-                    break;
-                }
+                } catch (Exception e) { break; }
             }
         }
         return merged;
     }
 
-    /** 根据筛选条件再过滤一次 */
+    /** Filter 二次过滤 + 排序 */
     private List<JSONObject> applyFilters(List<JSONObject> items,
-                                           String classFilter, String regionFilter,
+                                           String rankFilter, String classFilter,
                                            String yearFilter, String sort) {
         List<JSONObject> result = new ArrayList<>();
         for (JSONObject it : items) {
-            // 题材过滤: class 字段是逗号分隔, 包含即匹配
+            // 榜单过滤: rank 用 rankKeyword 字段, 如果搜索词包含 rank 就保留
+            if (!TextUtils.isEmpty(rankFilter) && !"全部".equals(rankFilter)) {
+                String rk = it.optString("rankKeyword", "");
+                boolean matched = false;
+                for (String s : rk.split(",")) {
+                    if (s.trim().equals(rankFilter)) { matched = true; break; }
+                }
+                if (!matched) continue;
+            }
             if (!TextUtils.isEmpty(classFilter) && !"全部".equals(classFilter)) {
                 String cls = it.optString("class", "");
                 boolean matched = false;
@@ -200,37 +217,26 @@ public class YunZhenXiang extends Spider {
                 }
                 if (!matched) continue;
             }
-            // 地区过滤
-            if (!TextUtils.isEmpty(regionFilter) && !"全部".equals(regionFilter)) {
-                String reg = it.optString("region", "");
-                if (!reg.contains(regionFilter)) continue;
-            }
-            // 年份过滤
             if (!TextUtils.isEmpty(yearFilter) && !"全部".equals(yearFilter)) {
-                String yr = it.optString("year", "");
-                if (!yr.equals(yearFilter)) continue;
+                if (!yearFilter.equals(it.optString("year", ""))) continue;
             }
             result.add(it);
         }
 
         // 排序
-        if ("最热".equals(sort)) {
+        if ("最新".equals(sort)) {
             Collections.sort(result, new Comparator<JSONObject>() {
                 @Override
                 public int compare(JSONObject a, JSONObject b) {
-                    double sa = a.optDouble("score", 0);
-                    double sb = b.optDouble("score", 0);
-                    return Double.compare(sb, sa);
+                    return b.optString("year", "0").compareTo(a.optString("year", "0"));
                 }
             });
         } else {
-            // 最新: 按 year 降序
+            // 最热 (默认)
             Collections.sort(result, new Comparator<JSONObject>() {
                 @Override
                 public int compare(JSONObject a, JSONObject b) {
-                    String ya = a.optString("year", "0");
-                    String yb = b.optString("year", "0");
-                    return yb.compareTo(ya);
+                    return Double.compare(b.optDouble("score", 0), a.optDouble("score", 0));
                 }
             });
         }
@@ -248,13 +254,10 @@ public class YunZhenXiang extends Spider {
     }
 
     /**
-     * 首页分类 —— 7 大类 + 每大类 4 组 Filter
-     *
-     * Filter 结构 (和截图里的 UI 一致):
-     *   题材: 全部 / 爱情 / 古装 / 战争 / 喜剧 / 家庭 / 犯罪 / 武侠 / 冒险 / 动作 / 恐怖 / 悬疑
-     *   地区: 全部 / 大陆 / 香港 / 台湾 / 日本 / 韩国 / 美国 / 泰国 / 其他
-     *   年份: 全部 / 2026 / 2025 / 2024 / ... / 2019
-     *   排序: 最热 / 最新
+     * 7 大类 + 4 组 Filter (榜单/题材/年份/排序)
+     * 和 app UI 对齐:
+     *   首页 tab = 热播榜/飙升榜/热搜榜/新片榜/高分榜
+     *   剧集 tab + 下拉筛选 (榜单/地区/题材/年份/排序)
      */
     @Override
     public String homeContent(boolean filter) {
@@ -264,25 +267,19 @@ public class YunZhenXiang extends Spider {
             for (String[][] cfg : CATEGORY_CONFIG) {
                 String tid = cfg[0][0];
                 String name = cfg[0][1];
-                // "首页" 不放 CatVod 分类栏 (首页由 homeVideoContent 处理)
-                if (!"首页".equals(tid)) {
-                    classes.add(new Class(tid, name));
-                }
+                if (!"首页".equals(tid)) classes.add(new Class(tid, name));
             }
 
-            // Filter 选项 (从搜索结果统计而来)
+            // Filter 选项
+            ArrayList<Filter.Value> rankValues = new ArrayList<>();
+            rankValues.add(new Filter.Value("全部", ""));
+            for (String s : RANK_KEYWORDS) rankValues.add(new Filter.Value(s, s));
+
             ArrayList<Filter.Value> classValues = new ArrayList<>();
             classValues.add(new Filter.Value("全部", ""));
             for (String s : new String[]{"爱情", "古装", "战争", "喜剧", "家庭", "犯罪", "武侠", "冒险",
-                    "动作", "恐怖", "悬疑", "剧情", "奇幻", "科幻", "动画", "真人秀", "惊悚", "同性", "搞笑"}) {
+                    "动作", "恐怖", "悬疑", "剧情", "奇幻", "科幻", "动画", "真人秀", "惊悚", "搞笑"}) {
                 classValues.add(new Filter.Value(s, s));
-            }
-
-            ArrayList<Filter.Value> regionValues = new ArrayList<>();
-            regionValues.add(new Filter.Value("全部", ""));
-            for (String s : new String[]{"大陆", "香港", "台湾", "日本", "韩国", "美国", "泰国",
-                    "英国", "法国", "德国", "意大利", "西班牙", "印度", "其他"}) {
-                regionValues.add(new Filter.Value(s, s));
             }
 
             ArrayList<Filter.Value> yearValues = new ArrayList<>();
@@ -295,8 +292,8 @@ public class YunZhenXiang extends Spider {
             sortValues.add(new Filter.Value("最热", "最热"));
             sortValues.add(new Filter.Value("最新", "最新"));
 
+            Filter rankFilter = new Filter("rank", "榜单", rankValues);
             Filter classFilter = new Filter("class", "题材", classValues);
-            Filter regionFilter = new Filter("region", "地区", regionValues);
             Filter yearFilter = new Filter("year", "年份", yearValues);
             Filter sortFilter = new Filter("sort", "排序", sortValues);
 
@@ -304,24 +301,21 @@ public class YunZhenXiang extends Spider {
             for (String[][] cfg : CATEGORY_CONFIG) {
                 String tid = cfg[0][0];
                 if (!"首页".equals(tid)) {
-                    filters.put(tid, Arrays.asList(classFilter, regionFilter, yearFilter, sortFilter));
+                    filters.put(tid, Arrays.asList(rankFilter, classFilter, yearFilter, sortFilter));
                 }
             }
 
             return Result.get().classes(classes).filters(filters).string();
-        } catch (Exception e) {
-            return "{}";
-        }
+        } catch (Exception e) { return "{}"; }
     }
 
-    /** 首页推荐 —— 用 "全部" 关键词混取, 不分 typeName */
+    /** 首页 —— 5 个榜单关键词混合, 取前 20, 打乱 */
     @Override
     public String homeVideoContent() {
         ensureInit();
         try {
-            List<JSONObject> items = fetchAndFilter(new String[]{"热门", "推荐", "全部"}, null);
-            // 首页取前 20 条, 混合展示
-            Collections.shuffle(items, new Random()); // 打乱让不同类型都出现
+            List<JSONObject> items = fetchAll(RANK_KEYWORDS);
+            Collections.shuffle(items, new Random());
             List<Vod> vods = itemsToVods(items.subList(0, Math.min(20, items.size())));
             return Result.string(vods);
         } catch (Exception e) {
@@ -329,33 +323,32 @@ public class YunZhenXiang extends Spider {
         }
     }
 
-    /** 分类列表 —— 多关键词合并 + typeName + class/region/year 过滤 + 排序 + 本地分页 */
+    /** 分类列表 —— 关键词池合并 + Filter 二次过滤 + 本地分页 */
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) {
         ensureInit();
         try {
-            // 找到这个 tid 对应的配置
             String[][] cfg = null;
             for (String[][] c : CATEGORY_CONFIG) {
                 if (c[0][0].equals(tid)) { cfg = c; break; }
             }
             if (cfg == null) return Result.string(new ArrayList<>());
 
-            String typeNameFilter = cfg[0][2]; // 精确 typeName 值
-            String[] keywords = cfg[1]; // 搜索关键词池
+            List<String> kwList = new ArrayList<>();
+            for (int i = 1; i < cfg.length; i++) {
+                for (String kw : cfg[i]) kwList.add(kw);
+            }
+            if (kwList.isEmpty()) kwList.add(tid);
 
-            // 1. 多关键词合并 + 按 typeName 过滤
-            List<JSONObject> all = fetchAndFilter(keywords, typeNameFilter);
+            List<JSONObject> all = fetchAll(kwList.toArray(new String[0]));
 
-            // 2. 按 Filter 条件再过滤
-            String classFilter = extend != null ? extend.get("class") : null;
-            String regionFilter = extend != null ? extend.get("region") : null;
-            String yearFilter = extend != null ? extend.get("year") : null;
+            String rf = extend != null ? extend.get("rank") : null;
+            String cf = extend != null ? extend.get("class") : null;
+            String yf = extend != null ? extend.get("year") : null;
             String sort = extend != null ? extend.get("sort") : "最热";
 
-            List<JSONObject> filtered = applyFilters(all, classFilter, regionFilter, yearFilter, sort);
+            List<JSONObject> filtered = applyFilters(all, rf, cf, yf, sort);
 
-            // 3. 本地分页
             int page;
             try { page = Integer.parseInt(pg); } catch (Exception e) { page = 1; }
             if (page <= 0) page = 1;
@@ -363,22 +356,16 @@ public class YunZhenXiang extends Spider {
             int pagecount = Math.max(1, (int) Math.ceil((double) filtered.size() / limit));
             int start = (page - 1) * limit;
             int end = Math.min(start + limit, filtered.size());
+            List<JSONObject> pageItems = (start >= filtered.size())
+                    ? new ArrayList<>()
+                    : filtered.subList(start, end);
 
-            List<JSONObject> pageItems;
-            if (start >= filtered.size()) {
-                pageItems = new ArrayList<>();
-            } else {
-                pageItems = filtered.subList(start, end);
-            }
-
-            List<Vod> vods = itemsToVods(pageItems);
-            return Result.string(page, pagecount, limit, filtered.size(), vods);
+            return Result.string(page, pagecount, limit, filtered.size(), itemsToVods(pageItems));
         } catch (Exception e) {
             return Result.string(new ArrayList<>());
         }
     }
 
-    /** JSON item → Vod */
     private List<Vod> itemsToVods(List<JSONObject> items) {
         List<Vod> vods = new ArrayList<>();
         for (JSONObject it : items) {
@@ -388,11 +375,8 @@ public class YunZhenXiang extends Spider {
             if (!pic.startsWith("http")) pic = resourceURL + pic;
             String remarks = it.optString("serialDesc");
             double score = it.optDouble("score", 0);
-            if (score > 0) {
-                remarks = (TextUtils.isEmpty(remarks) ? "" : remarks + " ") + "评分 " + score;
-            }
-            Vod v = new Vod(id, name, pic, remarks);
-            vods.add(v);
+            if (score > 0) remarks = (TextUtils.isEmpty(remarks) ? "" : remarks + " ") + "评分 " + score;
+            vods.add(new Vod(id, name, pic, remarks));
         }
         return vods;
     }
@@ -407,13 +391,10 @@ public class YunZhenXiang extends Spider {
             int idInt;
             try { idInt = Integer.parseInt(id); } catch (Exception e) { idInt = 0; }
             String url = textURL + "/cache/videos/" + (idInt / 1000) + "/" + id + ".json"
-                    + "?version=" + version
-                    + "&baoming=com.baiyunvideo.app"
-                    + "&channel=fenxiang";
+                    + "?version=" + version + "&baoming=com.baiyunvideo.app&channel=fenxiang";
 
             String raw = fetch(url);
             if (TextUtils.isEmpty(raw)) return Result.string(new ArrayList<>());
-
             String plain = decrypt(raw.trim());
             if (TextUtils.isEmpty(plain)) return Result.string(new ArrayList<>());
 
@@ -427,9 +408,7 @@ public class YunZhenXiang extends Spider {
             vod.setTypeName(data.optString("class"));
             vod.setVodRemarks(data.optString("remarks"));
             vod.setVodContent(String.format("主演：%s\n地区：%s\n简介：%s",
-                    data.optString("actor", "未知"),
-                    data.optString("region", ""),
-                    data.optString("blurb", "")));
+                    data.optString("actor", "未知"), data.optString("region", ""), data.optString("blurb", "")));
             vod.setVodYear(data.optString("year"));
             vod.setVodArea(data.optString("region"));
             vod.setVodActor(data.optString("actor"));
@@ -447,11 +426,8 @@ public class YunZhenXiang extends Spider {
             }
             vod.setVodPlayFrom("云帧享");
             vod.setVodPlayUrl(TextUtils.join("#", episodes));
-
             return Result.string(vod);
-        } catch (Exception e) {
-            return Result.string(new ArrayList<>());
-        }
+        } catch (Exception e) { return Result.string(new ArrayList<>()); }
     }
 
     /** 播放 */
@@ -461,24 +437,18 @@ public class YunZhenXiang extends Spider {
         try {
             String[] parts = id.split("@@");
             if (parts.length < 3) return Result.get().url("").parse(0).string();
-
-            String sid = parts[0];
-            String ji = parts[1];
-            String jiIndex = parts[2];
+            String sid = parts[0], ji = parts[1], jiIndex = parts[2];
 
             StringBuilder sb = new StringBuilder();
             Random random = new Random();
-            for (int i = 0; i < 16; i++) {
-                sb.append("abcdefghijklmnopqrstuvwxyz0123456789".charAt(random.nextInt(36)));
-            }
+            for (int i = 0; i < 16; i++) sb.append("abcdefghijklmnopqrstuvwxyz0123456789".charAt(random.nextInt(36)));
             String androidId = sb.toString();
             String vuk = md5(sid + AES_KEY);
 
             String url = textURL + "/vc/api/video/playurl"
                     + "?sid=" + sid + "&ji=" + ji + "&jiIndex=" + jiIndex
                     + "&t=0&y=0&isjiid=1&androidId=" + androidId
-                    + "&version=" + version
-                    + "&baoming=com.baiyunvideo.app&channel=fenxiang";
+                    + "&version=" + version + "&baoming=com.baiyunvideo.app&channel=fenxiang";
 
             Map<String, String> h = new HashMap<>(headers);
             h.put("vuk", vuk);
@@ -487,25 +457,20 @@ public class YunZhenXiang extends Spider {
 
             JSONObject root = new JSONObject(resp);
             JSONObject data = root.optJSONObject("data");
-            String playUrl = "";
-            if (data != null) {
-                playUrl = data.optString("url", "");
-            }
+            String playUrl = data != null ? data.optString("url", "") : "";
 
             Map<String, String> header = new HashMap<>();
             header.put("User-Agent", "baiyunvideo-android " + version);
             return Result.get().url(playUrl).parse(0).header(header).string();
-        } catch (Exception e) {
-            return Result.get().url("").parse(0).string();
-        }
+        } catch (Exception e) { return Result.get().url("").parse(0).string(); }
     }
 
-    /** 搜索 —— 用户主动搜某个关键词, 直接返回 */
     @Override
     public String searchContent(String key, boolean quick) {
         return searchContent(key, quick, "1");
     }
 
+    /** 用户主动搜索 —— 直接返回 */
     @Override
     public String searchContent(String key, boolean quick, String pg) {
         ensureInit();
@@ -513,24 +478,17 @@ public class YunZhenXiang extends Spider {
             int page;
             try { page = Integer.parseInt(pg); } catch (Exception e) { page = 1; }
             if (page <= 0) page = 1;
-
-            String json = fetch(textURL + "/vc/api/search/" + key + "/" + page + ".json");
+            String encKey = URLEncoder.encode(key, StandardCharsets.UTF_8.name()).replace("+", "%20");
+            String json = fetch(textURL + "/vc/api/search/" + encKey + "/" + page + ".json");
             if (json == null) return Result.string(new ArrayList<>());
-
             JSONArray arr = new JSONArray(json);
             List<Vod> vods = new ArrayList<>();
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject it = arr.getJSONObject(i);
                 String id = String.valueOf(it.optInt("videoId", 0));
-                String name = it.optString("videoName");
-                String pic = it.optString("fengmiantu");
-                if (!pic.startsWith("http")) pic = resourceURL + pic;
-                Vod v = new Vod(id, name, pic, it.optString("class"));
-                vods.add(v);
+                vods.add(new Vod(id, it.optString("videoName"), it.optString("fengmiantu"), it.optString("class")));
             }
             return Result.string(page, page + 1, 50, 9999, vods);
-        } catch (Exception e) {
-            return Result.string(new ArrayList<>());
-        }
+        } catch (Exception e) { return Result.string(new ArrayList<>()); }
     }
 }
