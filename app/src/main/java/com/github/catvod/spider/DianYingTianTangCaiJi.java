@@ -2,9 +2,9 @@ package com.github.catvod.spider;
 
 import android.content.Context;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.github.catvod.crawler.Spider;
 
 import java.io.IOException;
@@ -17,7 +17,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class DianYingTianTang extends Spider {
+public class DianYingTianTangCaiJi extends Spider {
 
     private static final OkHttpClient client = new OkHttpClient();
     private static final String API_BASE = "http://caiji.dyttzyapi.com/api.php/provide/vod/from/dyttm3u8/at/json/";
@@ -33,7 +33,7 @@ public class DianYingTianTang extends Spider {
     // ========== jar 内写死的分类结构（一级分组 + 子分类名） ==========
     private JSONArray innerGroups() {
         JSONArray arr = new JSONArray();
-        arr.add(group("电影片", "动作片", "喜剧片", "科幻片", "恐怖片", "爱情片", "剧情片", "战争片", "记录片", "动画片"));
+        arr.add(group("电影片", "动作片", "喜剧片", "科幻片", "恐怖片", "爱情片", "剧情片", "战争片", "记录片", "动画片", "伦理片"));
         arr.add(group("连续剧", "国产剧", "香港剧", "韩国剧", "欧美剧", "台湾剧", "日本剧", "海外剧", "泰国剧"));
         arr.add(group("短剧", "短剧"));
         arr.add(group("动漫片", "国产动漫", "日韩动漫", "欧美动漫", "港台动漫", "动画片"));
@@ -79,14 +79,14 @@ public class DianYingTianTang extends Spider {
         JSONArray groups = innerGroups();
         List<String> flat = new ArrayList<>();
         JSONArray originGroups = new JSONArray();
-        for (Object o : groups) {
-            JSONObject g = (JSONObject) o;
+        for (int i = 0; i < groups.size(); i++) {
+            JSONObject g = groups.getJSONObject(i);
             JSONArray subs = g.getJSONArray("sub");
             JSONObject ng = new JSONObject();
             ng.put("name", g.getString("name"));
             ng.put("sub", subs);
             originGroups.add(ng);
-            for (Object s : subs) flat.add((String) s);
+            for (int j = 0; j < subs.size(); j++) flat.add(subs.getString(j));
         }
         result.put("categories", flat);
         result.put("originCategories", originGroups); // 给魔改 UI 下拉菜单
@@ -107,7 +107,6 @@ public class DianYingTianTang extends Spider {
     // ========== 分类列表 ==========
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
-        // tid 是分类名，查表换成真实 type_id
         String t = TYPE_ID.get(tid);
         if (t == null) t = tid; // 兜底
         String url = API_BASE + "?ac=list&pg=" + pg + "&t=" + t;
