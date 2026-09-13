@@ -242,23 +242,57 @@ public class Xb6v extends Cloud {
         return searchContent(key, quick, "1");
     }
 
-    @Override
-    public String searchContent(String key, boolean quick, String pg) throws Exception {
-        String searchUrl = siteUrl + "/e/search/index.php";
-        if (pg.equals("1")) {
-            RequestBody formBody = new FormBody.Builder().add("show", "title").add("tempid", "1").add("tbname", "article").add("mid", "1").add("dopost", "search").add("submit", "").addEncoded("keyboard", key).build();
-            Request request = new Request.Builder().url(searchUrl).addHeader("User-Agent", Util.CHROME).addHeader("Origin", siteUrl).addHeader("Referer", siteUrl + "/").post(formBody).build();
-            Response response = OkHttp.newCall(request);
-            String[] split = String.valueOf(response.request().url()).split("\\?searchid=");
-            nextSearchUrlPrefix = split[0] + "index.php?page=";
-            nextSearchUrlSuffix = "&searchid=" + split[1];
-            return Result.string(parseVodListFromDoc(response.body().string()));
-        } else {
-            int page = Integer.parseInt(pg) - 1;
-            searchUrl = nextSearchUrlPrefix + page + nextSearchUrlSuffix;
-            return Result.string(parseVodListFromDoc(OkHttp.string(searchUrl, getHeader())));
+   @Override
+public String searchContent(String key, boolean quick, String pg) throws Exception {
+    String searchUrl = siteUrl + "/e/search/index.php";
+    if ("1".equals(pg)) {
+        nextSearchUrlPrefix = null;
+        nextSearchUrlSuffix = null;
+        RequestBody formBody = new FormBody.Builder()
+                .add("show", "title")
+                .add("tempid", "1")
+                .add("tbname", "article")
+                .add("mid", "1")
+                .add("dopost", "search")
+                .add("submit", "")
+                .addEncoded("keyboard", key)
+                .build();
+        Request request = new Request.Builder()
+                .url(searchUrl)
+                .addHeader("User-Agent", Util.CHROME)
+                .addHeader("Origin", siteUrl)
+                .addHeader("Referer", siteUrl + "/")
+                .post(formBody)
+                .build();
+        Response response = OkHttp.newCall(request);
+        String finalUrl = String.valueOf(response.request().url());
+        String html = response.body().string();
+        response.close();
+
+        //正则只提取searchid数值，不受跳转路径影响
+        Pattern sidPat = Pattern.compile("searchid=(\\d+)");
+        Matcher m = sidPat.matcher(finalUrl);
+        if (!m.find()) {
+            //内容获取失败，无searchid，返回空列表
+            return Result.string(new ArrayList<>());
         }
+        String searchId = m.group(1);
+        // ✅固定为正确的带index.php的前缀，与网站真实链接保持一致
+        nextSearchUrlPrefix = siteUrl + "/e/search/result/index.php?page=";
+        nextSearchUrlSuffix = "&searchid=" + searchId;
+        return Result.string(parseVodListFromDoc(html));
+    } else {
+        if (TextUtils.isEmpty(nextSearchUrlPrefix) || TextUtils.isEmpty(nextSearchUrlSuffix)) {
+            //未获取到searchid，内容获取失败返回空
+            return Result.string(new ArrayList<>());
+        }
+        int page = Integer.parseInt(pg);
+        //拼接结果示例：https://www.xb6v.com/e/search/result/index.php?page=2&searchid=2477
+        String realUrl = nextSearchUrlPrefix + page + nextSearchUrlSuffix;
+        String html = OkHttp.string(realUrl, getHeader());
+        return Result.string(parseVodListFromDoc(html));
     }
+}
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
