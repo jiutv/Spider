@@ -258,7 +258,7 @@ public String searchContent(String key, boolean quick, String pg) throws Excepti
                 .add("mid", "1")
                 .add("dopost", "search")
                 .add("submit", "")
-                .addEncoded("keyboard", key)
+                .add("keyboard", key)
                 .build();
         Request request = new Request.Builder()
                 .url(searchUrl)
@@ -295,7 +295,6 @@ public String searchContent(String key, boolean quick, String pg) throws Excepti
         String html = OkHttp.string(realUrl, getHeader());
         return Result.string(parseVodListFromDoc(html));
     }
-}
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
