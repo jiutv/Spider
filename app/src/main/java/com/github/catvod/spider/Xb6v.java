@@ -247,7 +247,7 @@ public class Xb6v extends Cloud {
 
    @Override
 public String searchContent(String key, boolean quick, String pg) throws Exception {
-    String searchUrl = siteUrl + "/e/search/index.php";
+    String searchUrl = siteUrl + "/e/search/11index.php";
     if ("1".equals(pg)) {
         nextSearchUrlPrefix = null;
         nextSearchUrlSuffix = null;
@@ -294,6 +294,7 @@ public String searchContent(String key, boolean quick, String pg) throws Excepti
         String realUrl = nextSearchUrlPrefix + page + nextSearchUrlSuffix;
         String html = OkHttp.string(realUrl, getHeader());
         return Result.string(parseVodListFromDoc(html));
+    }
     }
 
     @Override
