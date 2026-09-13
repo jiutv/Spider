@@ -9,11 +9,16 @@ import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-import com.github.catvod.utils.Util;
 
 import org.json.JSONObject;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -254,7 +259,7 @@ public class HuHang extends Spider {
     }
 
     // =====================================================================
-    //  播放页
+    //  播放页 - 多重兜底策略
     // =====================================================================
 
     @Override
@@ -262,24 +267,168 @@ public class HuHang extends Spider {
         String playUrl = id.startsWith("/") ? baseUrl + id : id;
         String html = fetch(playUrl);
 
-        // 从 now 变量提取m3u8地址
-        String videoUrl = matchGroup(html, "var\\s+now\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
-
-        if (TextUtils.isEmpty(videoUrl)) {
-            Pattern p = Pattern.compile("(https?://[^\\s\"'<>]+\\.m3u8[^\\s\"'<>]*)");
-            Matcher m = p.matcher(html);
-            if (m.find()) videoUrl = m.group(1);
+        if (TextUtils.isEmpty(html)) {
+            // 无法获取HTML，兜底：让WebView直接加载播放页嗅探
+            return buildParse1Result(playUrl);
         }
 
+        // 策略1: 解析 player_aaaa / player_data JSON 变量 (海洋CMS标准)
+        String videoUrl = tryParsePlayerJson(html, "player_aaaa");
+        if (TextUtils.isEmpty(videoUrl)) videoUrl = tryParsePlayerJson(html, "player_data");
+
+        // 策略2: 解析 var now / var url / var currentUrl 变量
         if (TextUtils.isEmpty(videoUrl)) {
-            return Result.error("解析播放地址失败");
+            videoUrl = matchGroup(html, "var\\s+now\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
+        }
+        if (TextUtils.isEmpty(videoUrl)) {
+            videoUrl = matchGroup(html, "var\\s+url\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
+        }
+        if (TextUtils.isEmpty(videoUrl)) {
+            videoUrl = matchGroup(html, "var\\s+currentUrl\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
         }
 
+        // 策略3: 搜索HTML中直接的 m3u8/mp4 链接
+        if (TextUtils.isEmpty(videoUrl)) {
+            videoUrl = extractDirectVideoUrl(html);
+        }
+
+        // 策略4: 找 iframe src 嵌入的播放器 → 让 WebView 嗅探
+        if (TextUtils.isEmpty(videoUrl)) {
+            try {
+                Document doc = Jsoup.parse(html);
+                Element iframe = doc.selectFirst("iframe[src]");
+                if (iframe != null) {
+                    String iframeSrc = iframe.attr("src");
+                    if (!TextUtils.isEmpty(iframeSrc)) {
+                        if (iframeSrc.startsWith("/")) iframeSrc = baseUrl + iframeSrc;
+                        else if (!iframeSrc.startsWith("http")) iframeSrc = baseUrl + "/" + iframeSrc;
+                        return buildParse1Result(iframeSrc);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 策略5: 兜底 - 让 WebView 直接加载播放页嗅探
+        if (TextUtils.isEmpty(videoUrl)) {
+            return buildParse1Result(playUrl);
+        }
+
+        // 成功找到视频地址
         Result result = Result.get().parse(0).url(videoUrl);
         if (videoUrl.toLowerCase().contains(".m3u8")) {
             result.m3u8();
         }
         return result.string();
+    }
+
+    /**
+     * 解析 player_aaaa / player_data 等 JSON 变量
+     * 海洋CMS播放页标准格式: var player_aaaa={"url":"xxx","encrypt":0,...}
+     */
+    private String tryParsePlayerJson(String html, String varName) {
+        String json = extractPlayerVar(html, varName);
+        if (TextUtils.isEmpty(json)) return "";
+        try {
+            String url = extractJsonValue(json, "url");
+            if (TextUtils.isEmpty(url)) return "";
+            int encrypt = 0;
+            try { encrypt = Integer.parseInt(extractJsonValue(json, "encrypt")); } catch (NumberFormatException ignored) {}
+            return decodeVideoUrl(url, encrypt);
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    /**
+     * 提取 JS 中的 JSON 对象变量 (支持嵌套花括号)
+     */
+    private String extractPlayerVar(String html, String varName) {
+        int idx = -1;
+        // 尝试 var player_aaaa = {...}
+        int varIdx = html.indexOf("var " + varName);
+        if (varIdx >= 0) idx = html.indexOf("{", varIdx);
+        // 尝试 player_aaaa = {...} (无var)
+        if (idx < 0) {
+            int plainIdx = html.indexOf(varName + "=");
+            if (plainIdx >= 0) idx = html.indexOf("{", plainIdx);
+        }
+        if (idx < 0) {
+            int plainIdx = html.indexOf(varName + " =");
+            if (plainIdx >= 0) idx = html.indexOf("{", plainIdx);
+        }
+        if (idx < 0) return null;
+
+        // 花括号计数，支持嵌套
+        int depth = 0, start = idx, end = -1;
+        boolean inString = false;
+        char stringChar = 0;
+        for (int i = idx; i < html.length(); i++) {
+            char c = html.charAt(i);
+            if (inString) {
+                if (c == '\\') { i++; }
+                else if (c == stringChar) { inString = false; }
+            } else {
+                if (c == '{') depth++;
+                else if (c == '}') { depth--; if (depth == 0) { end = i; break; } }
+                else if (c == '"' || c == '\'') { inString = true; stringChar = c; }
+            }
+        }
+        if (end > start) return html.substring(start, end + 1);
+        return null;
+    }
+
+    /**
+     * 从JSON字符串中提取指定key的值 (简单正则，避免org.json的异常)
+     */
+    private String extractJsonValue(String json, String key) {
+        Pattern p = Pattern.compile("\"" + key + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+        Matcher m = p.matcher(json);
+        if (m.find()) return m.group(1).replace("\\/", "/");
+        p = Pattern.compile("\"" + key + "\"\\s*:\\s*(\\d+)");
+        m = p.matcher(json);
+        if (m.find()) return m.group(1);
+        return "";
+    }
+
+    /**
+     * 按 encrypt 类型解码视频地址
+     * 0=明文, 1=URL编码, 2=Base64编码
+     */
+    private String decodeVideoUrl(String url, int encrypt) {
+        if (url == null || url.isEmpty()) return "";
+        try {
+            switch (encrypt) {
+                case 0: return url.trim();
+                case 1: return URLDecoder.decode(url.trim(), StandardCharsets.UTF_8.name()).trim();
+                case 2: return new String(Base64.getDecoder().decode(url.trim()), StandardCharsets.UTF_8).trim();
+                default: return url.trim();
+            }
+        } catch (Exception e) { return url.trim(); }
+    }
+
+    /**
+     * 直接从HTML中搜索 m3u8/mp4 视频链接
+     */
+    private String extractDirectVideoUrl(String html) {
+        Matcher m = Pattern.compile("https?://[^\"'\\s<>]+\\.m3u8[^\"'\\s<>]*", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (m.find()) return m.group();
+        m = Pattern.compile("https?://[^\"'\\s<>]+\\.mp4[^\"'\\s<>]*", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (m.find()) return m.group();
+        // 相对路径 m3u8
+        m = Pattern.compile("(/[^\"'\\s<>]+\\.m3u8[^\"'\\s<>]*)", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (m.find()) {
+            String path = m.group(1);
+            return baseUrl + path;
+        }
+        return "";
+    }
+
+    /**
+     * 构建 parse=1 的嗅探结果 (让 TVBox WebView 加载后自动嗅探视频)
+     */
+    private String buildParse1Result(String url) {
+        HashMap<String, String> header = new HashMap<>();
+        header.put("User-Agent", MOBILE_UA);
+        return Result.get().parse(1).url(url).header(header).string();
     }
 
     // =====================================================================
