@@ -8,7 +8,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import com.github.catvod.crawler.Spider;
-import com.github.catvod.utils.Init;
 import com.github.catvod.utils.Util;
 
 import org.json.JSONArray;
