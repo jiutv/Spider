@@ -79,6 +79,9 @@ public class Xb6v extends Cloud {
                 values.add(new Filter.Value("不限", ""));
                 for (Element a : e.nextElementSibling().select("a")) {
                     values.add(new Filter.Value(a.text(), a.attr("href").replaceAll(typeId, "")));
+                    if(a.text().equals("短剧")){
+                    classes.add(new Class(a.attr("href"), "短剧"));
+                }
                 }
                 List<Filter> filterList = new ArrayList<>();
                 filterList.add(new Filter("cateId", "类型", values));
