@@ -136,24 +136,20 @@ public class Xb6v extends Cloud {
 
         Vod.VodPlayBuilder builder = new Vod.VodPlayBuilder();
 
-
+        //磁力：先过滤 magnet 再加入，避免非磁力链接被塞进"磁力线路"
+        List<Vod.VodPlayBuilder.PlayUrl> magnetList = new ArrayList<>();
         for (Element source : sourceList) {
-            //磁力
-            Elements aList = source.select("table a");
-            String circuitName = "磁力线路";
-            List<Vod.VodPlayBuilder.PlayUrl> list = new ArrayList<>();
-            for (Element a : aList) {
+            for (Element a : source.select("table a")) {
                 String episodeUrl = a.attr("href");
-                String episodeName = a.text();
-                Vod.VodPlayBuilder.PlayUrl playUrl = new Vod.VodPlayBuilder.PlayUrl();
-                playUrl.name = episodeName;
-                playUrl.url = episodeUrl;
-                list.add(playUrl);
                 if (!episodeUrl.toLowerCase().startsWith("magnet")) continue;
-
+                Vod.VodPlayBuilder.PlayUrl playUrl = new Vod.VodPlayBuilder.PlayUrl();
+                playUrl.name = a.text();
+                playUrl.url = episodeUrl;
+                magnetList.add(playUrl);
             }
-            builder.append(circuitName, list);
-
+        }
+        if (!magnetList.isEmpty()) {
+            builder.append("磁力线路", magnetList);
         }
 
         List<String> shareLinks = new ArrayList<>();
