@@ -1,6 +1,7 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
@@ -60,7 +61,7 @@ public class Czzy extends Spider {
         final Throwable[] error = new Throwable[1];
         final AtomicBoolean finished = new AtomicBoolean(false);
 
-        Init.run(() -> {
+        Runnable setup = () -> {
             try {
                 // 用 Application context 创建 windowless WebView，不依赖 Activity 存在
                 WebView webView = new WebView(Init.context());
@@ -159,7 +160,16 @@ public class Czzy extends Spider {
                     latch.countDown();
                 }
             }
-        });
+        };
+
+        // 死锁防护：如果当前就在主线程，直接跑 setup；否则 post 到主线程队列
+        // 这样无论调用线程是谁，WebView 都在主线程操作，latch.await 在调用线程等待
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            SpiderDebug.log(TAG + " NOTE: called on MAIN thread, running setup directly");
+            setup.run();
+        } else {
+            Init.run(setup);
+        }
 
         // 后台线程等主线程轮询结果
         boolean done = latch.await(30, TimeUnit.SECONDS);
