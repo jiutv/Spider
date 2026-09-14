@@ -14,6 +14,7 @@ import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -203,43 +205,71 @@ public class HuHang extends Spider {
             vod.setVodContent(desc);
         }
 
-        // 解析播放线路和剧集
-        // HTML结构: <span id="wjm3u8">丹顶云</span> ... <dd class="wjm3u8">...<a href="/angplay/vid-sid-nid.html">第01集</a>...</dd>
-        LinkedHashMap<String, String> sourceMap = new LinkedHashMap<>();
-        Pattern sp = Pattern.compile("<span[^>]*id=\"([^\"]+)\"[^>]*>([^<]+)</span>");
-        Matcher sm = sp.matcher(html);
-        while (sm.find()) {
-            String spId = sm.group(1);
-            String spName = sm.group(2).trim();
-            if (isValidSourceName(spName)) sourceMap.put(spId, spName);
+        // 解析播放线路和剧集 —— 不依赖任何固定标签结构，直接从 angplay URL 按 sid 分组
+        // 思路: 扫描所有 href="/angplay/{vid}-{sid}-{nid}.html" 链接, 按 sid 不同拆分成多条线路
+        // 这样无论网站模板怎么改 (span/dd/div/li...), 只要 URL 路由不变就不会失效
+
+        // 先尝试从页面上提取线路名称映射 (如果网站有)
+        HashMap<String, String> sourceNameMap = extractSourceNameMap(html);
+
+        // 扫描所有 angplay 链接: 捕获 URL 中的 sid 和 nid, 以及显示文字
+        // 用 HashMap<sid, HashMap<nid, {name, url}>> 的结构收集
+        Pattern allLinkPattern = Pattern.compile(
+                "href=\"(/angplay/" + Pattern.quote(vid) + "-(\\d+)-(\\d+)\\.html)\"[^>]*>([^<]+)</a>");
+        Matcher linkMatcher = allLinkPattern.matcher(html);
+
+        // 按 sid 分组收集剧集: sid -> { nid -> {epName, epUrl} }
+        LinkedHashMap<String, LinkedHashMap<Integer, String>> sidEpisodes = new LinkedHashMap<>();
+        // 按 sid 分组收集剧集 URL (有序列表, 不依赖 nid 排序)
+        LinkedHashMap<String, LinkedHashMap<Integer, String>> sidEpisodeUrls = new LinkedHashMap<>();
+
+        while (linkMatcher.find()) {
+            String epUrl = linkMatcher.group(1);
+            String sid = linkMatcher.group(2);
+            int nid;
+            try { nid = Integer.parseInt(linkMatcher.group(3)); } catch (NumberFormatException) { continue; }
+            String epName = linkMatcher.group(4).trim();
+
+            // 过滤"立即播放"等非剧集链接
+            if (epName.contains("立即") || epName.contains("播放")) continue;
+            // 也过滤一些无关文字 (比如线路tab里的链接文字)
+            if (epName.length() < 2) continue;
+
+            sidEpisodes.computeIfAbsent(sid, k -> new LinkedHashMap<>()).put(nid, epName);
+            sidEpisodeUrls.computeIfAbsent(sid, k -> new LinkedHashMap<>()).put(nid, epUrl);
         }
+
+        // 按 sid 数字排序, 让线路顺序稳定
+        LinkedHashMap<String, Integer> sidOrder = new LinkedHashMap<>();
+        for (String sid : sidEpisodes.keySet()) {
+            try { sidOrder.put(sid, Integer.parseInt(sid)); } catch (NumberFormatException) { sidOrder.put(sid, Integer.MAX_VALUE); }
+        }
+        List<Map.Entry<String, Integer>> sortedSids = new ArrayList<>(sidOrder.entrySet());
+        sortedSids.sort(Map.Entry.comparingByValue());
 
         StringBuilder fromSb = new StringBuilder();
         StringBuilder urlSb = new StringBuilder();
+        int lineIdx = 1;
 
-        // 按 <dd class="xxx"> 块解析每条线路的剧集
-        Pattern ddPattern = Pattern.compile("<dd[^>]*class=\"([^\"]+)\"[^>]*>(.*?)</dd>", Pattern.DOTALL);
-        Matcher ddMatcher = ddPattern.matcher(html);
+        for (Map.Entry<String, Integer> entry : sortedSids) {
+            String sid = entry.getKey();
+            LinkedHashMap<Integer, String> epNames = sidEpisodes.get(sid);
+            LinkedHashMap<Integer, String> epUrls = sidEpisodeUrls.get(sid);
+            if (epNames == null || epNames.isEmpty()) continue;
 
-        while (ddMatcher.find()) {
-            String ddClass = ddMatcher.group(1).trim();
-            String ddContent = ddMatcher.group(2);
+            // 为这条线路命名: 优先用 sourceNameMap, 否则用通用名称
+            String srcName = sourceNameMap.get(sid);
+            if (TextUtils.isEmpty(srcName)) srcName = "线路" + lineIdx;
 
-            // 用 dd 的 class 匹配 span 的 id，得到线路名称
-            String srcName = sourceMap.get(ddClass);
-            if (TextUtils.isEmpty(srcName)) continue;
-
-            // 提取该剧集列表
-            Pattern epPattern = Pattern.compile(
-                    "href=\"(/angplay/" + vid + "-\\d+-\\d+\\.html)\"[^>]*>([^<]+)</a>");
-            Matcher epMatcher = epPattern.matcher(ddContent);
+            // 剧集按 nid 排序
+            List<Integer> nids = new ArrayList<>(epNames.keySet());
+            nids.sort(Integer::compareTo);
 
             StringBuilder epSb = new StringBuilder();
-            while (epMatcher.find()) {
-                String epUrl = epMatcher.group(1);
-                String epName = epMatcher.group(2).trim();
-                // 过滤"立即播放"等非剧集链接
-                if (epName.contains("立即") || epName.contains("播放")) continue;
+            for (int nid : nids) {
+                String epName = epNames.get(nid);
+                String epUrl = epUrls.get(nid);
+                if (TextUtils.isEmpty(epName) || TextUtils.isEmpty(epUrl)) continue;
                 if (epSb.length() > 0) epSb.append("#");
                 epSb.append(epName).append("$").append(epUrl);
             }
@@ -250,6 +280,7 @@ public class HuHang extends Spider {
             fromSb.append(srcName);
             if (urlSb.length() > 0) urlSb.append("$$$");
             urlSb.append(epSb);
+            lineIdx++;
         }
 
         vod.setVodPlayFrom(fromSb.toString());
@@ -543,6 +574,77 @@ public class HuHang extends Spider {
             }
         }
         return names.toArray(new String[0]);
+    }
+
+    /**
+     * 从页面提取 sid -> 线路名称的映射
+     * 兼容多种 HTML 结构 (海洋CMS常见)
+     *   1. <span id="wjm3u8">丹顶云</span>  (span 的 id 即 sid)
+     *   2. <a data-sid="3" class="fed-play-item">丹顶云</a>  (data-sid 属性)
+     *   3. <li class="fed-play-item" data-sid="3">丹顶云</li>
+     */
+    private HashMap<String, String> extractSourceNameMap(String html) {
+        HashMap<String, String> map = new HashMap<>();
+
+        // 方式1: <span id="xxx">名称</span> (sid 就是 id)
+        Pattern p1 = Pattern.compile("<span[^>]*id=\"(\\d+)\"[^>]*>([^<]+)</span>");
+        Matcher m1 = p1.matcher(html);
+        while (m1.find()) {
+            String sid = m1.group(1);
+            String name = m1.group(2).trim();
+            if (isValidSourceName(name) && !map.containsKey(sid)) {
+                map.put(sid, name);
+            }
+        }
+
+        // 方式2: 带 data-sid 属性的元素
+        Pattern p2 = Pattern.compile("data-sid=\"(\\d+)\"[^>]*>([^<]{2,10})<");
+        Matcher m2 = p2.matcher(html);
+        while (m2.find()) {
+            String sid = m2.group(1);
+            String name = m2.group(2).trim();
+            if (isValidSourceName(name) && !map.containsKey(sid)) {
+                map.put(sid, name);
+            }
+        }
+
+        // 方式3: <a href="/angplay/vid-{sid}-..."> (某些网站线路名称写在第一个剧集链接的父元素上)
+        // 这种方式无法精确匹配 sid<->name, 所以只在前两种都没结果时尝试
+        if (map.isEmpty()) {
+            // 尝试用 Jsoup 解析线路 tab 区域
+            try {
+                Document doc = Jsoup.parse(html);
+                // 常见线路tab选择器
+                String[] selectors = {
+                        ".fed-play-item", ".fed-source-item", ".tab-item",
+                        ".play-item", ".source-item",
+                        "[class*='play-item']", "[class*='source-item']",
+                        "[data-sid]"
+                };
+                for (String sel : selectors) {
+                    Elements els = doc.select(sel);
+                    for (Element el : els) {
+                        String sid = el.attr("data-sid");
+                        if (TextUtils.isEmpty(sid)) {
+                            // 尝试从 class 里提取数字 (某些网站用 class="wjm3u8")
+                            String cls = el.className();
+                            Pattern cp = Pattern.compile("(\\d+)");
+                            Matcher cm = cp.matcher(cls);
+                            if (cm.find()) sid = cm.group(1);
+                        }
+                        String name = el.text().trim();
+                        // 只取第一个线路文字 (避免取到剧集列表里的文字)
+                        if (name.contains(" ")) name = name.split("\\s+")[0];
+                        if (!TextUtils.isEmpty(sid) && isValidSourceName(name) && !map.containsKey(sid)) {
+                            map.put(sid, name);
+                        }
+                    }
+                    if (!map.isEmpty()) break;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return map;
     }
 
     private boolean isValidSourceName(String name) {
