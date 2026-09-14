@@ -259,7 +259,7 @@ public class ShortHema extends Spider {
         return bookId + "@" + chapterId;
     }
 
-    private static JSONArray arrayOf(JSONObject... items) {
+    private static JSONArray arrayOf(JSONObject... items) throws JSONException {   // ← 改了
         JSONArray array = new JSONArray();
         for (JSONObject item : items) {
             if (item != null) {
@@ -403,7 +403,7 @@ public class ShortHema extends Spider {
         return result.toString();
     }
 
-    public void init(Context context, String str) {
+    public void init(Context context, String str) throws Exception {   // ← 改了
         super.init(context, str);
     }
 
@@ -473,4 +473,3 @@ public class ShortHema extends Spider {
         return result.toString();
     }
 }
-
