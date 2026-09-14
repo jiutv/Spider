@@ -207,7 +207,7 @@ public class ShortQimao extends Spider {
         return HTML_TAG.matcher(input).replaceAll("");
     }
 
-    private List<JSONObject> parseList(JSONArray items) {
+    private List<JSONObject> parseList(JSONArray items) throws Exception {
         List<JSONObject> result = new ArrayList<>();
         if (items == null) {
             return result;
@@ -248,7 +248,7 @@ public class ShortQimao extends Spider {
         return result;
     }
 
-    public String categoryContent(String tagId, String nextId, boolean filter, HashMap<String, String> map) {
+    public String categoryContent(String tagId, String nextId, boolean filter, HashMap<String, String> map) throws Exception {
         LinkedHashMap<String, String> params = new LinkedHashMap<>();
         params.put("tag_id", tagId);
         params.put("next_id", TextUtils.isEmpty(nextId) ? "1" : nextId);
@@ -274,7 +274,7 @@ public class ShortQimao extends Spider {
         return result.toString();
     }
 
-    public String detailContent(List<String> list) {
+    public String detailContent(List<String> list) throws Exception {
         if (list == null || list.isEmpty()) {
             return "";
         }
@@ -339,7 +339,7 @@ public class ShortQimao extends Spider {
         return result.toString();
     }
 
-    public String homeContent(boolean filter) {
+    public String homeContent(boolean filter) throws Exception {
         LinkedHashMap<String, String> params = new LinkedHashMap<>();
         params.put("tag_id", "0");
         params.put("playlet_privacy", "1");
@@ -369,7 +369,7 @@ public class ShortQimao extends Spider {
         return wrapper.toString();
     }
 
-    public void init(Context context, String str) {
+    public void init(Context context, String str) throws Exception {
         super.init(context, str);
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "okhttp/4.10.0");
@@ -394,7 +394,7 @@ public class ShortQimao extends Spider {
         }
     }
 
-    public String playerContent(String flag, String url, List<String> flags) {
+    public String playerContent(String flag, String url, List<String> flags) throws Exception {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("User-Agent", "webviewversion/0");
         headers.put("Referer", "Dalvik/2.1.0 (Linux; U; Android 11; M2012K10C Build/RP1A.200720.011)");
@@ -405,7 +405,7 @@ public class ShortQimao extends Spider {
         return result.toString();
     }
 
-    public String searchContent(String keyword, boolean quick) {
+    public String searchContent(String keyword, boolean quick) throws Exception {
         if (TextUtils.isEmpty(keyword)) {
             return "{\"list\":[]}";
         }
