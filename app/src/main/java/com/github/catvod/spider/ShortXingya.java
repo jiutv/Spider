@@ -222,7 +222,7 @@ public class ShortXingya extends Spider {
         return out;
     }
 
-    public String categoryContent(String str, String str2, boolean z, HashMap<String, String> map) throws JSONException {
+    public String categoryContent(String str, String str2, boolean z, HashMap<String, String> map) throws Exception {
         int page = 1;
         try {
             page = Math.max(1, Integer.parseInt(str2));
@@ -242,7 +242,7 @@ public class ShortXingya extends Spider {
         return result.toString();
     }
 
-    public String detailContent(List<String> list) throws JSONException {
+    public String detailContent(List<String> list) throws Exception {
         String theaterId = list.get(0);
         JSONObject detail = requestJsonGet("/v2/theater_parent/detail?theater_parent_id=" + theaterId).getJSONObject("data");
 
@@ -282,7 +282,7 @@ public class ShortXingya extends Spider {
         return result.toString();
     }
 
-    public String homeVideoContent() throws JSONException {
+    public String homeVideoContent() throws Exception {
         JSONObject response = requestJsonGet("/v1/theater/home_page?theater_class_id=1&class2_id=4&page_num=1&page_size=24");
         JSONArray list = response.optJSONObject("data").optJSONArray("list");
         ArrayList<JSONObject> items = parseVodList(list, "play_amount_str");
@@ -291,7 +291,7 @@ public class ShortXingya extends Spider {
         return result.toString();
     }
 
-    public void init(Context context, String str) {
+    public void init(Context context, String str) throws Exception {
         super.init(context, str);
     }
 
@@ -314,7 +314,7 @@ public class ShortXingya extends Spider {
         return result.toString();
     }
 
-    public String searchContent(String str, boolean z) throws JSONException {
+    public String searchContent(String str, boolean z) throws Exception {
         if (TextUtils.isEmpty(str)) {
             JSONObject empty = new JSONObject();
             empty.put("list", new JSONArray());
