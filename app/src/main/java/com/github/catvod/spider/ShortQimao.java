@@ -47,46 +47,9 @@ public class ShortQimao extends Spider {
     }
 
     private static String buildQmParams() {
-        LinkedHashMap<String, String> fingerprint = new LinkedHashMap<>();
-        fingerprint.put("static_score", "0.8");
-        fingerprint.put("uuid", "00000000-6f7c-e347-0000-000000000000");
-        fingerprint.put("device-id", "202504012213236fa2ed536aed584e0cc8a6a09fe2f2d4016cdc5bc74f2d5f");
-        fingerprint.put("mac", "");
-        fingerprint.put("sourceuid", "9494817a02a93435");
-        fingerprint.put("refresh-type", "0");
-        fingerprint.put("model", "M2012K10C");
-        fingerprint.put("wlb-imei", "");
-        fingerprint.put("AUTHORIZATION", "6bcc46919d10d06a");
-        fingerprint.put("brand", "Redmi");
-        fingerprint.put("oaid", "");
-        fingerprint.put("oaid-no-cache", "");
-        fingerprint.put("sys-ver", "11");
-        fingerprint.put("trusted-id", "");
-        fingerprint.put("phone-level", "H");
-        fingerprint.put("imei", "");
-        fingerprint.put("wlb-uid", "6bcc46919d10d06a");
-        fingerprint.put("session-id", String.valueOf(System.currentTimeMillis()));
-
-        String json = new Gson().toJson(fingerprint);
-        String base64 = Base64.encodeToString(json.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-        StringBuilder sb = new StringBuilder(base64.length());
-        for (int i = 0; i < base64.length(); i++) {
-            char c = base64.charAt(i);
-            if (c == '+') {
-                sb.append('P');
-            } else if (c == '/') {
-                sb.append('X');
-            } else if (c >= '0' && c <= '9') {
-                sb.append("MUlErYWbdJ".charAt(c - '0'));
-            } else if (c >= 'A' && c <= 'Z') {
-                sb.append("9saI0oy_HGitgNA8Fk3hfRqC4p".charAt(c - 'A'));
-            } else if (c >= 'a' && c <= 'z') {
-                sb.append("mBOuc6KxT5-2zSZ1VvjQ7DwnLe".charAt(c - 'a'));
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
+        // 服务端升级后，原来的 18 字段 fingerprint 全部被拒（返回 invalid qm-params header）。
+        // 实测空 fingerprint {} 编码后的空串可以正常通过验签。
+        return "";
     }
 
     private static String buildSign(String raw) {
