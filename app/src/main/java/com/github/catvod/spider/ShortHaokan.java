@@ -203,11 +203,11 @@ public class ShortHaokan extends Spider {
         return wrapper.toString();
     }
 
-    public void init(Context context, String str) {
+    public void init(Context context, String str) throws Exception {
         super.init(context, str);
     }
 
-    public String playerContent(String str, String str2, List<String> list) {
+    public String playerContent(String str, String str2, List<String> list) throws Exception {
         String[] parts = str2.split("\\|\\|||");
         String relate = "method=post&vid=" + parts[0] + "&immersive_mode=v4_5&tplname=feed_small_video&tag=playlet_talos&tab=detail&external_from=&is_dp_video=0&immersive_square_type=3&video_set_id=" + parts[1] + "&play_screen_type=1&play_volume_type=2&play_external_device_type=1";
         String response = httpPostForm(BASE_URL + "/appui/api?osbranch=a0", form("video/relate", relate), requestHeaders());
@@ -243,11 +243,11 @@ public class ShortHaokan extends Spider {
         return wrapper.toString();
     }
 
-    public String searchContent(String str, boolean z) {
+    public String searchContent(String str, boolean z) throws Exception {
         return searchContent(str, "1");
     }
 
-    public String searchContent(String str, boolean z, String str2) {
+    public String searchContent(String str, boolean z, String str2) throws Exception {
         return searchContent(str, str2);
     }
 }
