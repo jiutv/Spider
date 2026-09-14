@@ -47,7 +47,7 @@ public class Zhaozy extends Ali {
     }
 
     @Override
-    public void init(Context context, String extend) {
+    public void init(Context context, String extend) throws Exception {
         String[] split = extend.split("\\$\\$\\$");
         super.init(context, split[0]);
         username = split[1];
