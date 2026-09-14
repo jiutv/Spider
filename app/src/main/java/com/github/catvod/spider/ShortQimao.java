@@ -327,8 +327,14 @@ public class ShortQimao extends Spider {
                 }
             }
         }
+
+        // 首屏推荐列表，CatVod 需要这个才不会每次空屏转圈
+        JSONArray rawList = data != null && data.has("list") ? data.optJSONArray("list") : null;
+        List<JSONObject> homeItems = parseList(rawList);
+
         JSONObject wrapper = new JSONObject();
         wrapper.put("class", result);
+        wrapper.put("list", new JSONArray(homeItems));
         return wrapper.toString();
     }
 
@@ -377,17 +383,27 @@ public class ShortQimao extends Spider {
         params.put("page", "1");
         params.put("wd", keyword.trim());
         params.put("read_preference", "0");
-        params.put("0", "6bcc46919d10d06a" + System.currentTimeMillis());
 
         JSONObject data = signRequest(storeHost, "/api/v1/playlet/search", params).optJSONObject("data");
         JSONArray list = data != null && data.has("list") ? data.optJSONArray("list") : null;
         List<JSONObject> items = parseList(list);
 
+        // 用 API 返回的 meta.total_pages 设置翻页数
+        int totalPages = 2;
+        if (data != null && data.has("meta")) {
+            JSONObject meta = data.optJSONObject("meta");
+            String tp = meta.optString("total_pages", "2");
+            try {
+                totalPages = Math.max(2, Integer.parseInt(tp));
+            } catch (Exception ignored) {
+            }
+        }
+
         JSONObject result = new JSONObject();
         result.put("page", 1);
-        result.put("pagecount", 2);
-        result.put("limit", 20);
-        result.put("total", items.size());
+        result.put("pagecount", totalPages);
+        result.put("limit", 10);
+        result.put("total", items.size() * totalPages);
         result.put("list", new JSONArray(items));
         return result.toString();
     }
