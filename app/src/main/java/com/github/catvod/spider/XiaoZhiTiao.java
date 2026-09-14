@@ -38,7 +38,7 @@ public class XiaoZhiTiao extends Ali {
     }
 
     @Override
-    public void init(Context context, String extend) throws Exception {
+    public void init(Context context, String extend) {
         super.init(context, extend);
         date = new Date();
     }

@@ -40,7 +40,7 @@ public class XPathMac extends XPath {
      * @param context
      * @param extend
      */
-    public void init(Context context, String extend) throws Exception {
+    public void init(Context context, String extend) {
         super.init(context, extend);
     }
 

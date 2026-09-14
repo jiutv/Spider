@@ -203,7 +203,7 @@ public class ShortHaokan extends Spider {
         return wrapper.toString();
     }
 
-    public void init(Context context, String str) throws Exception {
+    public void init(Context context, String str) {
         super.init(context, str);
     }
 
