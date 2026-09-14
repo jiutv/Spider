@@ -2,14 +2,12 @@ package com.github.catvod.spider;
 
 import android.content.Context;
 import android.text.TextUtils;
-
 import com.github.catvod.bean.Class;
 import com.github.catvod.bean.Filter;
 import com.github.catvod.bean.Result;
 import com.github.catvod.bean.Vod;
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.net.OkHttp;
-
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -41,10 +39,8 @@ import java.util.regex.Pattern;
  * <p>init 配置：{@code {"url": "https://www.qdhuhang.com"}}</p>
  */
 public class HuHang extends Spider {
-
     private String baseUrl = "https://www.qdhuhang.com";
     private HashMap<String, String> headers;
-
     // 主分类 id -> 名称
     private static final String[][] MAIN_CATEGORIES = {
             {"1", "电影"},
@@ -53,38 +49,32 @@ public class HuHang extends Spider {
             {"4", "动漫"},
             {"48", "短剧"},
     };
-
     // 电影子分类
     private static final String[][] MOVIE_FILTERS = {
             {"5", "动作片"}, {"6", "爱情片"}, {"7", "科幻片"}, {"8", "恐怖片"},
             {"9", "战争片"}, {"10", "喜剧片"}, {"11", "纪录片"}, {"12", "剧情片"},
             {"32", "惊悚片"}, {"33", "悬疑片"},
     };
-
     // 电视剧子分类
     private static final String[][] TV_FILTERS = {
             {"13", "国产剧"}, {"14", "港剧"}, {"15", "美剧"}, {"16", "韩剧"},
             {"25", "日剧"}, {"28", "台剧"}, {"29", "泰剧"}, {"36", "大陆剧"},
             {"37", "海外剧"},
     };
-
     // 综艺子分类
     private static final String[][] VARIETY_FILTERS = {
             {"26", "精选"}, {"38", "内地"}, {"39", "日韩"}, {"40", "港台"}, {"41", "欧美"},
     };
-
     // 动漫子分类
     private static final String[][] ANIME_FILTERS = {
             {"27", "樱花"}, {"31", "电影"}, {"42", "国产"}, {"43", "日韩"},
             {"44", "欧美"}, {"45", "港台"}, {"46", "风车"}, {"60", "新番"}, {"61", "热番"},
     };
-
     // 短剧子分类
     private static final String[][] SHORT_FILTERS = {
             {"49", "女频剧"}, {"50", "反转剧"}, {"51", "穿越剧"}, {"52", "古装剧"},
             {"53", "都市剧"}, {"54", "脑洞剧"}, {"55", "爽文剧"},
     };
-
     // 移动端 User-Agent（网站拦截PC浏览器，必须用移动端UA）
     private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.5845.178 Mobile Safari/537.36";
 
@@ -107,86 +97,82 @@ public class HuHang extends Spider {
     // =====================================================================
     //  首页
     // =====================================================================
-
     @Override
     public String homeContent(boolean filter) throws Exception {
         ArrayList<Class> classes = new ArrayList<>();
         LinkedHashMap<String, List<Filter>> filters = new LinkedHashMap<>();
-
         for (String[] cat : MAIN_CATEGORIES) {
             classes.add(new Class(cat[0], cat[1]));
         }
-
         // 5大分类都加类型筛选器
         filters.put("1", buildFilters("类型", "1", MOVIE_FILTERS));
         filters.put("2", buildFilters("类型", "2", TV_FILTERS));
         filters.put("3", buildFilters("类型", "3", VARIETY_FILTERS));
         filters.put("4", buildFilters("类型", "4", ANIME_FILTERS));
         filters.put("48", buildFilters("类型", "48", SHORT_FILTERS));
-
         String html = fetch(baseUrl + "/qdhyl/1.html");
         ArrayList<Vod> list = parseVodList(html);
-
         return Result.string(classes, list, filters);
     }
 
     // =====================================================================
     //  分类页
     // =====================================================================
-
     @Override
     public String categoryContent(String tid, String pg, boolean filter, HashMap<String, String> extend) throws Exception {
         String catId = tid;
-        if (extend != null && extend.containsKey("cate") && !TextUtils.isEmpty(extend.get("cate"))) {
-            catId = extend.get("cate");
+        // 修复：判断extend里cate不为空再赋值，避免传入非数字内容
+        if (extend != null && extend.containsKey("cate")) {
+            String cateVal = extend.get("cate");
+            if (!TextUtils.isEmpty(cateVal)) {
+                catId = cateVal;
+            }
         }
-
         int page = 1;
-        try { page = Integer.parseInt(pg); } catch (NumberFormatException ignored) {}
-
+        try {
+            page = Integer.parseInt(pg);
+        } catch (NumberFormatException e) {
+            page = 1;
+        }
         String url;
         if (page <= 1) {
             url = baseUrl + "/qdhyl/" + catId + ".html";
         } else {
             url = baseUrl + "/qdhyl/" + catId + "-" + page + ".html";
         }
-
         String html = fetch(url);
         ArrayList<Vod> list = parseVodList(html);
         int pageCount = parsePageCount(html);
-
         return Result.get().page(page, pageCount, 30, pageCount * 30).vod(list).string();
     }
 
     // =====================================================================
     //  详情页
     // =====================================================================
-
     @Override
     public String detailContent(List<String> ids) throws Exception {
         String vid = ids.get(0);
         String url = baseUrl + "/huhzc/" + vid + ".html";
         String html = fetch(url);
-
         Vod vod = new Vod();
         vod.setVodId(vid);
-
         // 标题
         Pattern p = Pattern.compile("<h1[^>]*>([^<]+)</h1>");
         Matcher m = p.matcher(html);
         if (m.find()) vod.setVodName(m.group(1).trim());
-
         // 封面 - 优先 data-original, 再 data-src, 再 src
         String pic = "";
         String[] imgAttrs = {"data-original", "data-src", "src"};
         for (String attr : imgAttrs) {
             p = Pattern.compile("class=\"fed-deta-img[^\"]*\"[^>]*>.*?<img[^>]*" + attr + "=\"([^\"]+)\"", Pattern.DOTALL);
             m = p.matcher(html);
-            if (m.find()) { pic = m.group(1).trim(); break; }
+            if (m.find()) {
+                pic = m.group(1).trim();
+                break;
+            }
         }
         if (!TextUtils.isEmpty(pic) && pic.startsWith("/")) pic = baseUrl + pic;
         vod.setVodPic(pic);
-
         // 信息项
         String infoBlock = matchGroup(html, "class=\"fed-deta-info[^\"]*\"[^>]*>(.*?)</ul>", 1);
         if (!TextUtils.isEmpty(infoBlock)) {
@@ -197,74 +183,58 @@ public class HuHang extends Spider {
             vod.setVodDirector(extractInfo(infoBlock, "导演"));
             vod.setVodRemarks(extractInfo(infoBlock, "更新"));
         }
-
         // 简介
         String desc = matchGroup(html, "class=\"fed-deta-content[^\"]*\"[^>]*>(.*?)</div>", 1);
         if (!TextUtils.isEmpty(desc)) {
             desc = desc.replaceAll("<[^>]+>", "").replace("&nbsp;", " ").trim();
             vod.setVodContent(desc);
         }
-
         // 解析播放线路和剧集 —— 不依赖任何固定标签结构，直接从 angplay URL 按 sid 分组
-        // 思路: 扫描所有 href="/angplay/{vid}-{sid}-{nid}.html" 链接, 按 sid 不同拆分成多条线路
-        // 这样无论网站模板怎么改 (span/dd/div/li...), 只要 URL 路由不变就不会失效
-
-        // 先尝试从页面上提取线路名称映射 (如果网站有)
         HashMap<String, String> sourceNameMap = extractSourceNameMap(html);
-
-        // 扫描所有 angplay 链接: 捕获 URL 中的 sid 和 nid, 以及显示文字
-        // 用 HashMap<sid, HashMap<nid, {name, url}>> 的结构收集
         Pattern allLinkPattern = Pattern.compile(
                 "href=\"(/angplay/" + Pattern.quote(vid) + "-(\\d+)-(\\d+)\\.html)\"[^>]*>([^<]+)</a>");
         Matcher linkMatcher = allLinkPattern.matcher(html);
-
-        // 按 sid 分组收集剧集: sid -> { nid -> {epName, epUrl} }
         LinkedHashMap<String, LinkedHashMap<Integer, String>> sidEpisodes = new LinkedHashMap<>();
-        // 按 sid 分组收集剧集 URL (有序列表, 不依赖 nid 排序)
         LinkedHashMap<String, LinkedHashMap<Integer, String>> sidEpisodeUrls = new LinkedHashMap<>();
-
         while (linkMatcher.find()) {
             String epUrl = linkMatcher.group(1);
             String sid = linkMatcher.group(2);
             int nid;
-            try { nid = Integer.parseInt(linkMatcher.group(3)); } catch (NumberFormatException) { continue; }
+            try {
+                nid = Integer.parseInt(linkMatcher.group(3));
+            } catch (NumberFormatException e) {
+                continue;
+            }
             String epName = linkMatcher.group(4).trim();
-
             // 过滤"立即播放"等非剧集链接
             if (epName.contains("立即") || epName.contains("播放")) continue;
-            // 也过滤一些无关文字 (比如线路tab里的链接文字)
             if (epName.length() < 2) continue;
-
             sidEpisodes.computeIfAbsent(sid, k -> new LinkedHashMap<>()).put(nid, epName);
             sidEpisodeUrls.computeIfAbsent(sid, k -> new LinkedHashMap<>()).put(nid, epUrl);
         }
-
         // 按 sid 数字排序, 让线路顺序稳定
         LinkedHashMap<String, Integer> sidOrder = new LinkedHashMap<>();
         for (String sid : sidEpisodes.keySet()) {
-            try { sidOrder.put(sid, Integer.parseInt(sid)); } catch (NumberFormatException) { sidOrder.put(sid, Integer.MAX_VALUE); }
+            try {
+                sidOrder.put(sid, Integer.parseInt(sid));
+            } catch (NumberFormatException e) {
+                sidOrder.put(sid, Integer.MAX_VALUE);
+            }
         }
         List<Map.Entry<String, Integer>> sortedSids = new ArrayList<>(sidOrder.entrySet());
         sortedSids.sort(Map.Entry.comparingByValue());
-
         StringBuilder fromSb = new StringBuilder();
         StringBuilder urlSb = new StringBuilder();
         int lineIdx = 1;
-
         for (Map.Entry<String, Integer> entry : sortedSids) {
             String sid = entry.getKey();
             LinkedHashMap<Integer, String> epNames = sidEpisodes.get(sid);
             LinkedHashMap<Integer, String> epUrls = sidEpisodeUrls.get(sid);
             if (epNames == null || epNames.isEmpty()) continue;
-
-            // 为这条线路命名: 优先用 sourceNameMap, 否则用通用名称
             String srcName = sourceNameMap.get(sid);
             if (TextUtils.isEmpty(srcName)) srcName = "线路" + lineIdx;
-
-            // 剧集按 nid 排序
             List<Integer> nids = new ArrayList<>(epNames.keySet());
             nids.sort(Integer::compareTo);
-
             StringBuilder epSb = new StringBuilder();
             for (int nid : nids) {
                 String epName = epNames.get(nid);
@@ -273,40 +243,32 @@ public class HuHang extends Spider {
                 if (epSb.length() > 0) epSb.append("#");
                 epSb.append(epName).append("$").append(epUrl);
             }
-
             if (epSb.length() == 0) continue;
-
             if (fromSb.length() > 0) fromSb.append("$$$");
             fromSb.append(srcName);
             if (urlSb.length() > 0) urlSb.append("$$$");
             urlSb.append(epSb);
             lineIdx++;
         }
-
         vod.setVodPlayFrom(fromSb.toString());
         vod.setVodPlayUrl(urlSb.toString());
-
         return Result.string(vod);
     }
 
     // =====================================================================
     //  播放页 - 多重兜底策略
     // =====================================================================
-
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         String playUrl = id.startsWith("/") ? baseUrl + id : id;
         String html = fetch(playUrl);
-
         if (TextUtils.isEmpty(html)) {
             // 无法获取HTML，兜底：让WebView直接加载播放页嗅探
             return buildParse1Result(playUrl);
         }
-
         // 策略1: 解析 player_aaaa / player_data JSON 变量 (海洋CMS标准)
         String videoUrl = tryParsePlayerJson(html, "player_aaaa");
         if (TextUtils.isEmpty(videoUrl)) videoUrl = tryParsePlayerJson(html, "player_data");
-
         // 策略2: 解析 var now / var url / var currentUrl 变量
         if (TextUtils.isEmpty(videoUrl)) {
             videoUrl = matchGroup(html, "var\\s+now\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
@@ -317,12 +279,10 @@ public class HuHang extends Spider {
         if (TextUtils.isEmpty(videoUrl)) {
             videoUrl = matchGroup(html, "var\\s+currentUrl\\s*=\\s*['\"]([^'\"]+)['\"]", 1);
         }
-
         // 策略3: 搜索HTML中直接的 m3u8/mp4 链接
         if (TextUtils.isEmpty(videoUrl)) {
             videoUrl = extractDirectVideoUrl(html);
         }
-
         // 策略4: 找 iframe src 嵌入的播放器 → 让 WebView 嗅探
         if (TextUtils.isEmpty(videoUrl)) {
             try {
@@ -338,12 +298,10 @@ public class HuHang extends Spider {
                 }
             } catch (Exception ignored) {}
         }
-
         // 策略5: 兜底 - 让 WebView 直接加载播放页嗅探
         if (TextUtils.isEmpty(videoUrl)) {
             return buildParse1Result(playUrl);
         }
-
         // 成功找到视频地址
         Result result = Result.get().parse(0).url(videoUrl);
         if (videoUrl.toLowerCase().contains(".m3u8")) {
@@ -351,7 +309,6 @@ public class HuHang extends Spider {
         }
         return result.string();
     }
-
     /**
      * 解析 player_aaaa / player_data 等 JSON 变量
      * 海洋CMS播放页标准格式: var player_aaaa={"url":"xxx","encrypt":0,...}
@@ -363,12 +320,11 @@ public class HuHang extends Spider {
             String url = extractJsonValue(json, "url");
             if (TextUtils.isEmpty(url)) return "";
             int encrypt = 0;
-            try { encrypt = Integer.parseInt(extractJsonValue(json, "encrypt")); } catch (NumberFormatException ignored) {}
+            try { encrypt = Integer.parseInt(extractJsonValue(json, "encrypt")); } catch (NumberFormatException e) {}
             return decodeVideoUrl(url, encrypt);
         } catch (Exception ignored) {}
         return "";
     }
-
     /**
      * 提取 JS 中的 JSON 对象变量 (支持嵌套花括号)
      */
@@ -387,7 +343,6 @@ public class HuHang extends Spider {
             if (plainIdx >= 0) idx = html.indexOf("{", plainIdx);
         }
         if (idx < 0) return null;
-
         // 花括号计数，支持嵌套
         int depth = 0, start = idx, end = -1;
         boolean inString = false;
@@ -406,7 +361,6 @@ public class HuHang extends Spider {
         if (end > start) return html.substring(start, end + 1);
         return null;
     }
-
     /**
      * 从JSON字符串中提取指定key的值 (简单正则，避免org.json的异常)
      */
@@ -419,7 +373,6 @@ public class HuHang extends Spider {
         if (m.find()) return m.group(1);
         return "";
     }
-
     /**
      * 按 encrypt 类型解码视频地址
      * 0=明文, 1=URL编码, 2=Base64编码
@@ -435,7 +388,6 @@ public class HuHang extends Spider {
             }
         } catch (Exception e) { return url.trim(); }
     }
-
     /**
      * 直接从HTML中搜索 m3u8/mp4 视频链接
      */
@@ -452,7 +404,6 @@ public class HuHang extends Spider {
         }
         return "";
     }
-
     /**
      * 构建 parse=1 的嗅探结果 (让 TVBox WebView 加载后自动嗅探视频)
      */
@@ -461,11 +412,9 @@ public class HuHang extends Spider {
         header.put("User-Agent", MOBILE_UA);
         return Result.get().parse(1).url(url).header(header).string();
     }
-
     // =====================================================================
     //  搜索
     // =====================================================================
-
     @Override
     public String searchContent(String keyword, boolean quick) throws Exception {
         String url = baseUrl + "/index.php?m=search&searchword="
@@ -474,38 +423,31 @@ public class HuHang extends Spider {
         ArrayList<Vod> list = parseVodList(html);
         return Result.string(list);
     }
-
     // =====================================================================
     //  工具方法
     // =====================================================================
-
     private String fetch(String url) {
         return OkHttp.string(url, headers);
     }
-
     private ArrayList<Vod> parseVodList(String html) {
         ArrayList<Vod> list = new ArrayList<>();
         if (TextUtils.isEmpty(html)) return list;
-
         Pattern p = Pattern.compile(
                 "<li[^>]*class=\"[^\"]*fed-list-item[^\"]*\"[^>]*>(.*?)</li>",
                 Pattern.DOTALL
         );
         Matcher m = p.matcher(html);
-
         while (m.find()) {
             String item = m.group(1);
             try {
                 // ID
                 String idMatch = matchGroup(item, "href=\"/huhzc/(\\d+)\\.html\"", 1);
                 if (TextUtils.isEmpty(idMatch)) continue;
-
                 // 图片 - 优先 data-original (lazyload), 再 data-src, 再 src
                 String pic = matchGroup(item, "data-original=\"([^\"]+)\"", 1);
                 if (TextUtils.isEmpty(pic)) pic = matchGroup(item, "data-src=\"([^\"]+)\"", 1);
                 if (TextUtils.isEmpty(pic)) pic = matchGroup(item, "src=\"([^\"]+)\"", 1);
                 if (!TextUtils.isEmpty(pic) && pic.startsWith("/")) pic = baseUrl + pic;
-
                 // 标题 - 从 fed-list-title 提取
                 String title = matchGroup(item, "class=\"[^\"]*fed-list-title[^\"]*\"[^>]*>([^<]+)</a>", 1);
                 if (TextUtils.isEmpty(title)) {
@@ -522,37 +464,31 @@ public class HuHang extends Spider {
                 }
                 if (TextUtils.isEmpty(title)) continue;
                 title = title.trim();
-
                 // 备注/状态
                 String remark = matchGroup(item, "class=\"[^\"]*fed-list-remarks[^\"]*\"[^>]*>([^<]+)<", 1);
                 if (TextUtils.isEmpty(remark)) remark = "";
-
                 Vod vod = new Vod(idMatch, title, pic, remark.trim());
                 list.add(vod);
             } catch (Exception ignored) {
             }
         }
-
         return list;
     }
-
     private int parsePageCount(String html) {
         Pattern p = Pattern.compile("/qdhyl/\\d+-(\\d+)\\.html[^>]*>尾页");
         Matcher m = p.matcher(html);
         if (m.find()) {
-            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) {}
+            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException e) {}
         }
         p = Pattern.compile("1/(\\d+)");
         m = p.matcher(html);
         if (m.find()) {
-            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException ignored) {}
+            try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException e) {}
         }
         return 1;
     }
-
     private String[] parseSourceNames(String html) {
         ArrayList<String> names = new ArrayList<>();
-
         String tabt = matchGroup(html, "class=\"tabt[^\"]*\"[^>]*>(.*?)</(?:div|ul)>", 1);
         if (!TextUtils.isEmpty(tabt)) {
             Pattern p = Pattern.compile("<span[^>]*>([^<]+)</span>");
@@ -563,7 +499,6 @@ public class HuHang extends Spider {
             }
         }
         if (names.size() > 0) return names.toArray(new String[0]);
-
         String playTabs = matchGroup(html, "class=\"[^\"]*fed-play[^\"]*\"[^>]*>(.*?)</div>", 1);
         if (!TextUtils.isEmpty(playTabs)) {
             Pattern p = Pattern.compile(">([^<>]{2,8})<");
@@ -575,7 +510,6 @@ public class HuHang extends Spider {
         }
         return names.toArray(new String[0]);
     }
-
     /**
      * 从页面提取 sid -> 线路名称的映射
      * 兼容多种 HTML 结构 (海洋CMS常见)
@@ -585,7 +519,6 @@ public class HuHang extends Spider {
      */
     private HashMap<String, String> extractSourceNameMap(String html) {
         HashMap<String, String> map = new HashMap<>();
-
         // 方式1: <span id="xxx">名称</span> (sid 就是 id)
         Pattern p1 = Pattern.compile("<span[^>]*id=\"(\\d+)\"[^>]*>([^<]+)</span>");
         Matcher m1 = p1.matcher(html);
@@ -596,7 +529,6 @@ public class HuHang extends Spider {
                 map.put(sid, name);
             }
         }
-
         // 方式2: 带 data-sid 属性的元素
         Pattern p2 = Pattern.compile("data-sid=\"(\\d+)\"[^>]*>([^<]{2,10})<");
         Matcher m2 = p2.matcher(html);
@@ -607,11 +539,8 @@ public class HuHang extends Spider {
                 map.put(sid, name);
             }
         }
-
-        // 方式3: <a href="/angplay/vid-{sid}-..."> (某些网站线路名称写在第一个剧集链接的父元素上)
-        // 这种方式无法精确匹配 sid<->name, 所以只在前两种都没结果时尝试
+        // 方式3: 尝试用 Jsoup 解析线路 tab 区域
         if (map.isEmpty()) {
-            // 尝试用 Jsoup 解析线路 tab 区域
             try {
                 Document doc = Jsoup.parse(html);
                 // 常见线路tab选择器
@@ -643,10 +572,8 @@ public class HuHang extends Spider {
                 }
             } catch (Exception ignored) {}
         }
-
         return map;
     }
-
     private boolean isValidSourceName(String name) {
         if (TextUtils.isEmpty(name)) return false;
         if (name.length() < 2 || name.length() > 10) return false;
@@ -654,7 +581,6 @@ public class HuHang extends Spider {
         if (name.contains("排序") || name.contains("筛选") || name.contains("全部")) return false;
         return true;
     }
-
     private String extractInfo(String block, String label) {
         Pattern p = Pattern.compile(label + "：\\s*([^<]+)");
         Matcher m = p.matcher(block);
@@ -667,7 +593,6 @@ public class HuHang extends Spider {
         }
         return "";
     }
-
     private static String matchGroup(String input, String regex, int group) {
         try {
             Pattern p = Pattern.compile(regex, Pattern.DOTALL);
@@ -677,7 +602,6 @@ public class HuHang extends Spider {
         }
         return "";
     }
-
     private ArrayList<Filter> buildFilters(String key, String allId, String[][] items) {
         ArrayList<Filter> list = new ArrayList<>();
         ArrayList<Filter.Value> values = new ArrayList<>();
