@@ -49,6 +49,9 @@ public class Dongpian extends Spider {
 
     private static final String SITE = "https://dongpian.ai";
 
+    /** yjplayer 的播放源解析服务——无鉴权，resolve 一次返回全集真实地址 */
+    private static final String PLAYBACK_RESOLVE = "https://player.baipiaozhe.com/v1/playback/resolve/";
+
     // 前端逆向得到的签名密钥 (Vo)
     private static final String SIGN_SECRET = "8b9a908a05eac640e1ee06f52acaa741bfe4ba9e004eeffdbeb635e532e06666";
 
@@ -66,6 +69,8 @@ public class Dongpian extends Spider {
     private static final List<String> KIND_NAMES = Arrays.asList("电视剧", "电影", "动漫", "综艺", "短剧");
 
     private final OkHttpClient client = new OkHttpClient();
+    /** 无签名的外部请求客户端（baipiaozhe / CDN 等第三方域名） */
+    private final OkHttpClient plainClient = new OkHttpClient();
     private final SecureRandom random = new SecureRandom();
 
     // ==================== Spider 接口 ====================
@@ -159,34 +164,47 @@ public class Dongpian extends Spider {
             vod.setVodDirector(joinJsonArray(d.optJSONArray("directors"), " / "));
 
             // 剧集 + 播放源
+            // dongpian detail 里 episodes[].urls.yjm3u8 是 baipiaozhe 内部代理，对外返回 301 循环重定向
+            // 正确方式：每集的 YJ token → 分别调 player.baipiaozhe.com/v1/playback/resolve/<token>
+            // resolve 每集各返回一个真实 CDN m3u8（不同线路候选，每集独立选优）
             JSONArray episodes = d.optJSONArray("episodes");
             if (episodes != null && episodes.length() > 0) {
-                // 线路: yjm3u8 (m3u8直链) 和 yjapi (API JSON)
                 ArrayList<String> fromList = new ArrayList<>();
                 ArrayList<String> urlGroupList = new ArrayList<>();
 
                 fromList.add("M3U8");
                 ArrayList<String> m3u8Items = new ArrayList<>();
-                fromList.add("API");
-                ArrayList<String> apiItems = new ArrayList<>();
 
+                // 逐集 resolve：每集一个 YJ token → 一次 resolve → 真实 m3u8
                 for (int i = 0; i < episodes.length(); i++) {
                     JSONObject ep = episodes.optJSONObject(i);
                     if (ep == null) continue;
                     String title = ep.optString("title");
                     if (TextUtils.isEmpty(title)) title = "第" + (i + 1) + "集";
+                    String token = ep.optString("token");
+                    if (TextUtils.isEmpty(token)) continue;
+                    try {
+                        String r = getPlain(PLAYBACK_RESOLVE + token);
+                        JSONObject item = new JSONObject(r);
+                        String realUrl = item.optString("url");
+                        if (!TextUtils.isEmpty(realUrl)) {
+                            m3u8Items.add(title + "$" + realUrl);
+                            continue;
+                        }
+                    } catch (Exception resolveFail) {
+                        resolveFail.printStackTrace();
+                    }
+                    // resolve 失败兜底：用 dongpian detail 给的（虽然可能 301 但先试）
                     JSONObject urls = ep.optJSONObject("urls");
                     if (urls != null) {
-                        String m3u8 = urls.optString("yjm3u8");
-                        if (!TextUtils.isEmpty(m3u8)) m3u8Items.add(title + "$" + m3u8);
-                        String api = urls.optString("yjapi");
-                        if (!TextUtils.isEmpty(api)) apiItems.add(title + "$" + api);
+                        String fallback = urls.optString("yjm3u8");
+                        if (!TextUtils.isEmpty(fallback)) {
+                            m3u8Items.add(title + "$" + fallback);
+                        }
                     }
                 }
 
                 urlGroupList.add(join("#", m3u8Items));
-                urlGroupList.add(join("#", apiItems));
-
                 vod.setVodPlayFrom(join("$$$", fromList));
                 vod.setVodPlayUrl(join("$$$", urlGroupList));
             }
@@ -241,10 +259,11 @@ public class Dongpian extends Spider {
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
         try {
-            // id 已经是完整的 m3u8 / api URL，直接返回
+            // id 现在是真实 CDN 的 m3u8 (cdm.vvvip-plays33.cc / hn.bfvvs.com / ...)
+            // 直接透传，播放器自己 follow redirect + 拉分片
             Map<String, String> headers = new HashMap<>();
-            headers.put("User-Agent", "Mozilla/5.0");
-            headers.put("Referer", SITE + "/");
+            headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
+            headers.put("Accept", "*/*");
             return Result.get().url(id).header(headers).parse(0).string();
         } catch (Exception e) {
             return Result.get().url(id).parse(0).string();
@@ -258,6 +277,20 @@ public class Dongpian extends Spider {
      */
     private String get(String url) throws Exception {
         return request("GET", url, null);
+    }
+
+    /**
+     * 执行无签名的 GET 请求（第三方域名，如 player.baipiaozhe.com）
+     */
+    private String getPlain(String url) throws Exception {
+        Request req = new Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36")
+                .header("Accept", "application/json")
+                .header("Referer", "https://player.baipiaozhe.com/yjplayer.html")
+                .build();
+        Response resp = plainClient.newCall(req).execute();
+        return resp.body() == null ? "" : resp.body().string();
     }
 
     /**
