@@ -140,7 +140,7 @@ public class ShortWeiguan extends Spider {
         }
     }
 
-    private static JSONArray toJSONArray(List<JSONObject> list) {
+    private static JSONArray toJSONArray(List<JSONObject> list) throws JSONException {   // ← 改了
         JSONArray array = new JSONArray();
         for (JSONObject item : list) {
             if (item != null) {
@@ -264,7 +264,7 @@ public class ShortWeiguan extends Spider {
         return result.toString();
     }
 
-    public void init(Context context, String str) {
+    public void init(Context context, String str) throws Exception {   // ← 改了
         super.init(context, str);
         this.deviceName = Build.MODEL;
         this.deviceFirm = Build.BRAND;
