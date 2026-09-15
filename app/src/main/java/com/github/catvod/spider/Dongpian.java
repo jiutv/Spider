@@ -11,18 +11,26 @@ import com.github.catvod.crawler.Spider;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import okhttp3.ConnectionPool;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -30,32 +38,27 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * 懂片帝 (dongpian.ai) 专用爬虫
+ * 懂片帝 (dongpian.ai) 专用爬虫 v2
  *
- * 技术要点：
- * - 前端是 React SPA，数据来自 /v1/* API
- * - /v1/* 请求需要 HMAC-SHA256 签名（前端逆向得到的密钥 Vo）
- * - 签名 header: x-ai-movie-timestamp / x-ai-movie-nonce / x-ai-movie-signature
- * - 客户端 header: x-ai-movie-client-* 系列
+ * 播放链路（关键）：
+ *   dongpian detail API 给的 episodes[].urls.yjm3u8 是 zy.baipiaozhe.com 内部代理，
+ *   对外返回 301 循环重定向。正确方式是：
+ *   每集的 YJ token → player.baipiaozhe.com/v1/playback/resolve/<token> → 真实 CDN m3u8
  *
- * API 端点：
- * - GET  /v1/feed/home                           首页内容
- * - GET  /v1/browse/catalog?kind=series&page=1   分类列表（kind: series/movie/anime/variety/short_drama）
- * - GET  /v1/catalog/{card_id}                   详情（含 episodes 和 yjm3u8 直链 m3u8）
+ *   优化：resolve 第一集 token 就能拿到全集 tokens 列表，后续集用并发 resolve 加速。
+ *   每集 resolve 返回 30 条不同 provider 的线路，取 top-N 组成多播放源（$$$ 分隔）。
  *
- * 播放源：episodes[].urls.yjm3u8 是直链 m3u8，episodes[].urls.yjapi 是 API 模式
+ * 搜索：dongpian 无原生搜索 API（/v1/catalog/search 返回 500，后端未实现），
+ *   退化为多 kind × 多页 browse catalog 本地过滤，匹配 title / normalized_title。
  */
 public class Dongpian extends Spider {
 
     private static final String SITE = "https://dongpian.ai";
-
-    /** yjplayer 的播放源解析服务——无鉴权，resolve 一次返回全集真实地址 */
     private static final String PLAYBACK_RESOLVE = "https://player.baipiaozhe.com/v1/playback/resolve/";
 
-    // 前端逆向得到的签名密钥 (Vo)
+    // 前端逆向的签名密钥
     private static final String SIGN_SECRET = "8b9a908a05eac640e1ee06f52acaa741bfe4ba9e004eeffdbeb635e532e06666";
 
-    // 客户端标识 (la() 函数填充的 header)
     private static final Map<String, String> CLIENT_HEADERS = new HashMap<>();
     static {
         CLIENT_HEADERS.put("x-ai-movie-client-name", "movie-search-frontend");
@@ -64,13 +67,38 @@ public class Dongpian extends Spider {
         CLIENT_HEADERS.put("x-ai-movie-protocol-version", "2026-07-05.library-v2.playback-v1");
     }
 
-    // 首页展示的分类（kind 映射）
     private static final List<String> KIND_IDS   = Arrays.asList("series", "movie", "anime", "variety", "short_drama");
     private static final List<String> KIND_NAMES = Arrays.asList("电视剧", "电影", "动漫", "综艺", "短剧");
 
-    private final OkHttpClient client = new OkHttpClient();
-    /** 无签名的外部请求客户端（baipiaozhe / CDN 等第三方域名） */
-    private final OkHttpClient plainClient = new OkHttpClient();
+    /** 每集选 top-N 不同 provider 作为多播放源 */
+    private static final int TOP_PROVIDERS = 5;
+    /** 并发 resolve 线程数 */
+    private static final int RESOLVE_THREADS = 8;
+    /** 并发 resolve 超时（秒） */
+    private static final int RESOLVE_TIMEOUT_SEC = 15;
+    /** 搜索遍历的分类页数上限（dongpian 无原生搜索 API，靠 browse catalog 本地过滤） */
+    private static final int SEARCH_MAX_PAGES = 10;
+    /** 单次 browse catalog 返回条数 */
+    private static final int SEARCH_PAGE_LIMIT = 50;
+    /** 精确匹配达到这个数量后提前停止（性能优化） */
+    private static final int SEARCH_EARLY_EXACT_STOP = 20;
+    /** 前 N 页优先精确匹配（热门内容基本在前几页，快速返回） */
+    private static final int SEARCH_EXACT_FIRST_PAGES = 3;
+
+    /** 带连接池的签名请求客户端 */
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .build();
+
+    /** 无签名的外部请求客户端（baipiaozhe / CDN） */
+    private final OkHttpClient plainClient = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .build();
+
     private final SecureRandom random = new SecureRandom();
 
     // ==================== Spider 接口 ====================
@@ -95,8 +123,7 @@ public class Dongpian extends Spider {
     public String homeVideoContent() {
         ArrayList<Vod> list = new ArrayList<>();
         try {
-            String url = SITE + "/v1/feed/home";
-            String resp = get(url);
+            String resp = get(SITE + "/v1/feed/home");
             JSONObject root = new JSONObject(resp);
             JSONArray sections = root.optJSONArray("sections");
             if (sections == null) return Result.string(list);
@@ -125,8 +152,7 @@ public class Dongpian extends Spider {
             url.append("&sort=updated_desc");
             if (!TextUtils.isEmpty(tid)) url.append("&kind=").append(tid);
 
-            String resp = get(url.toString());
-            JSONObject root = new JSONObject(resp);
+            JSONObject root = new JSONObject(get(url.toString()));
             JSONArray cards = root.optJSONArray("cards");
             if (cards != null) {
                 for (int i = 0; i < cards.length(); i++) {
@@ -145,9 +171,8 @@ public class Dongpian extends Spider {
 
         String cardId = ids.get(0);
         try {
-            String url = SITE + "/v1/catalog/" + cardId;
-            String resp = get(url);
-            JSONObject d = new JSONObject(resp);
+            // 1) 拉 dongpian detail API（基础信息 + 第一集 token）
+            JSONObject d = new JSONObject(get(SITE + "/v1/catalog/" + cardId));
 
             Vod vod = new Vod();
             vod.setVodId(d.optString("id", cardId));
@@ -158,58 +183,133 @@ public class Dongpian extends Spider {
             vod.setVodYear(String.valueOf(d.optInt("year")));
             vod.setVodArea(d.optString("area"));
             vod.setVodRemarks(d.optString("remarks"));
-
-            // 演员 / 导演
             vod.setVodActor(joinJsonArray(d.optJSONArray("actors"), " / "));
             vod.setVodDirector(joinJsonArray(d.optJSONArray("directors"), " / "));
 
-            // 剧集 + 播放源
-            // dongpian detail 里 episodes[].urls.yjm3u8 是 baipiaozhe 内部代理，对外返回 301 循环重定向
-            // 正确方式：每集的 YJ token → 分别调 player.baipiaozhe.com/v1/playback/resolve/<token>
-            // resolve 每集各返回一个真实 CDN m3u8（不同线路候选，每集独立选优）
-            JSONArray episodes = d.optJSONArray("episodes");
-            if (episodes != null && episodes.length() > 0) {
-                ArrayList<String> fromList = new ArrayList<>();
-                ArrayList<String> urlGroupList = new ArrayList<>();
-
-                fromList.add("M3U8");
-                ArrayList<String> m3u8Items = new ArrayList<>();
-
-                // 逐集 resolve：每集一个 YJ token → 一次 resolve → 真实 m3u8
-                for (int i = 0; i < episodes.length(); i++) {
-                    JSONObject ep = episodes.optJSONObject(i);
-                    if (ep == null) continue;
-                    String title = ep.optString("title");
-                    if (TextUtils.isEmpty(title)) title = "第" + (i + 1) + "集";
-                    String token = ep.optString("token");
-                    if (TextUtils.isEmpty(token)) continue;
-                    try {
-                        String r = getPlain(PLAYBACK_RESOLVE + token);
-                        JSONObject item = new JSONObject(r);
-                        String realUrl = item.optString("url");
-                        if (!TextUtils.isEmpty(realUrl)) {
-                            m3u8Items.add(title + "$" + realUrl);
-                            continue;
-                        }
-                    } catch (Exception resolveFail) {
-                        resolveFail.printStackTrace();
-                    }
-                    // resolve 失败兜底：用 dongpian detail 给的（虽然可能 301 但先试）
-                    JSONObject urls = ep.optJSONObject("urls");
-                    if (urls != null) {
-                        String fallback = urls.optString("yjm3u8");
-                        if (!TextUtils.isEmpty(fallback)) {
-                            m3u8Items.add(title + "$" + fallback);
-                        }
-                    }
-                }
-
-                urlGroupList.add(join("#", m3u8Items));
-                vod.setVodPlayFrom(join("$$$", fromList));
-                vod.setVodPlayUrl(join("$$$", urlGroupList));
+            // 2) 拿第一集 token（从 dongpian detail 里取）
+            JSONArray dpEps = d.optJSONArray("episodes");
+            if (dpEps == null || dpEps.length() == 0) {
+                return Result.string(vod);
+            }
+            String firstToken = dpEps.getJSONObject(0).optString("token");
+            if (TextUtils.isEmpty(firstToken)) {
+                return Result.string(vod);
             }
 
+            // 3) resolve 第一集 → 拿到全集 tokens + 多 provider 线路
+            String firstResolveRaw = getPlain(PLAYBACK_RESOLVE + firstToken);
+            JSONObject firstResolve = new JSONObject(firstResolveRaw);
+
+            // 从 line_options 选 top-N 不同 provider（跳过 resolve:// 付费线路）
+            JSONArray lineOpts = firstResolve.optJSONArray("line_options");
+            ArrayList<Provider> topProviders = pickTopProviders(lineOpts, TOP_PROVIDERS);
+            if (topProviders.isEmpty()) {
+                // 兜底：只用第一集的默认线路
+                String fallbackUrl = firstResolve.optString("url");
+                if (!TextUtils.isEmpty(fallbackUrl)) {
+                    ArrayList<String> fromList = new ArrayList<>();
+                    ArrayList<String> urlGroupList = new ArrayList<>();
+                    fromList.add("M3U8");
+                    ArrayList<String> items = new ArrayList<>();
+                    // 只有第一集有 url，其余集兜底
+                    JSONArray allEps = firstResolve.optJSONArray("episodes");
+                    if (allEps != null) {
+                        for (int i = 0; i < allEps.length(); i++) {
+                            JSONObject ep = allEps.getJSONObject(i);
+                            String name = ep.optString("display_name");
+                            if (TextUtils.isEmpty(name)) name = "第" + (i + 1) + "集";
+                            items.add(name + "$" + (i == 0 ? fallbackUrl : ""));
+                        }
+                    }
+                    urlGroupList.add(join("#", items));
+                    vod.setVodPlayFrom("M3U8");
+                    vod.setVodPlayUrl(join("$$$", urlGroupList));
+                }
+                return Result.string(vod);
+            }
+
+            // 4) 收集全集 tokens（从第一集 resolve 返回的 episodes 数组）
+            JSONArray resolveEps = firstResolve.optJSONArray("episodes");
+            ArrayList<String> allTokens = new ArrayList<>();
+            ArrayList<String> allTitles = new ArrayList<>();
+            // 第一集已经 resolve 过了
+            allTokens.add(firstToken);
+            allTitles.add(firstResolve.optJSONObject("current_episode").optString("display_name", "第1集"));
+            if (resolveEps != null) {
+                for (int i = 1; i < resolveEps.length(); i++) {
+                    JSONObject ep = resolveEps.getJSONObject(i);
+                    allTokens.add(ep.optString("token"));
+                    String name = ep.optString("display_name");
+                    if (TextUtils.isEmpty(name)) name = "第" + (i + 1) + "集";
+                    allTitles.add(name);
+                }
+            }
+
+            // 5) 并发 resolve 剩余集
+            int totalEps = allTokens.size();
+            // providerUrls[providerId] = [ep1_url, ep2_url, ...]
+            Map<String, ArrayList<String>> providerUrls = new LinkedHashMap<>();
+            for (Provider p : topProviders) {
+                ArrayList<String> urls = new ArrayList<>(totalEps);
+                for (int i = 0; i < totalEps; i++) urls.add("");  // 预填充空
+                providerUrls.put(p.id, urls);
+            }
+
+            // 先填第一集的 url
+            fillEpisodeUrls(providerUrls, topProviders, lineOpts, 0);
+
+            // 并发 resolve 剩下集
+            if (totalEps > 1) {
+                ExecutorService executor = Executors.newFixedThreadPool(RESOLVE_THREADS);
+                ArrayList<Future<String>> futures = new ArrayList<>();
+                for (int i = 1; i < totalEps; i++) {
+                    final String token = allTokens.get(i);
+                    final int epIdx = i;
+                    futures.add(executor.submit(new Callable<String>() {
+                        @Override
+                        public String call() {
+                            try {
+                                return getPlain(PLAYBACK_RESOLVE + token);
+                            } catch (Exception e) {
+                                return null;
+                            }
+                        }
+                    }));
+                }
+
+                for (int i = 0; i < futures.size(); i++) {
+                    try {
+                        String raw = futures.get(i).get(RESOLVE_TIMEOUT_SEC, TimeUnit.SECONDS);
+                        if (raw != null) {
+                            JSONObject r = new JSONObject(raw);
+                            JSONArray lo = r.optJSONArray("line_options");
+                            fillEpisodeUrls(providerUrls, topProviders, lo, i + 1);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                executor.shutdown();
+            }
+
+            // 6) 组装 VodPlayFrom / VodPlayUrl
+            ArrayList<String> fromList = new ArrayList<>();
+            ArrayList<String> urlGroupList = new ArrayList<>();
+            for (Provider p : topProviders) {
+                fromList.add(p.label);
+                ArrayList<String> items = new ArrayList<>();
+                ArrayList<String> urls = providerUrls.get(p.id);
+                for (int i = 0; i < allTitles.size(); i++) {
+                    String url = i < urls.size() ? urls.get(i) : "";
+                    if (!TextUtils.isEmpty(url)) {
+                        items.add(allTitles.get(i) + "$" + url);
+                    }
+                }
+                urlGroupList.add(join("#", items));
+            }
+
+            vod.setVodPlayFrom(join("$$$", fromList));
+            vod.setVodPlayUrl(join("$$$", urlGroupList));
             return Result.string(vod);
+
         } catch (Exception e) {
             e.printStackTrace();
             return Result.string(empty);
@@ -223,44 +323,108 @@ public class Dongpian extends Spider {
 
     @Override
     public String searchContent(String key, boolean quick, String pg) {
-        // 懂片帝没开放普通搜索 API，退化为遍历分类列表过滤标题
         ArrayList<Vod> list = new ArrayList<>();
         if (TextUtils.isEmpty(key)) return Result.string(list);
         if (TextUtils.isEmpty(pg)) pg = "1";
 
         try {
-            // 用 browse catalog 的 updated_desc 排序 + 客户端本地过滤 title
-            // 搜不到足够结果时，尝试多个 kind 拼合
-            for (String kind : KIND_IDS) {
-                StringBuilder url = new StringBuilder(SITE);
-                url.append("/v1/browse/catalog?page=").append(pg);
-                url.append("&limit=20");
-                url.append("&sort=heat_desc");
-                url.append("&kind=").append(kind);
+            String keyLower = key.toLowerCase();
 
-                String resp = get(url.toString());
-                JSONObject root = new JSONObject(resp);
+            // 并发：5 kind × SEARCH_MAX_PAGES 页的 browse catalog 请求
+            ExecutorService executor = Executors.newFixedThreadPool(RESOLVE_THREADS);
+            ArrayList<Future<String>> futures = new ArrayList<>();
+
+            for (String kind : KIND_IDS) {
+                for (int page = 1; page <= SEARCH_MAX_PAGES; page++) {
+                    final String url = SITE + "/v1/browse/catalog?page=" + page
+                            + "&limit=" + SEARCH_PAGE_LIMIT + "&sort=heat_desc&kind=" + kind;
+                    futures.add(executor.submit(new Callable<String>() {
+                        @Override
+                        public String call() {
+                            try {
+                                return get(url);
+                            } catch (Exception e) {
+                                return null;
+                            }
+                        }
+                    }));
+                }
+            }
+            executor.shutdown();
+
+            // 收集结果并过滤
+            HashSet<String> seenIds = new HashSet<>();
+            ArrayList<Vod> exactMatches = new ArrayList<>();
+            ArrayList<Vod> fuzzyMatches = new ArrayList<>();
+
+            for (Future<String> fut : futures) {
+                String raw;
+                try {
+                    raw = fut.get(RESOLVE_TIMEOUT_SEC, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    continue;
+                }
+                if (TextUtils.isEmpty(raw)) continue;
+
+                JSONObject root;
+                try {
+                    root = new JSONObject(raw);
+                } catch (Exception e) {
+                    continue;
+                }
                 JSONArray cards = root.optJSONArray("cards");
-                if (cards == null) continue;
+                if (cards == null || cards.length() == 0) continue;
+
                 for (int i = 0; i < cards.length(); i++) {
                     JSONObject card = cards.optJSONObject(i);
                     if (card == null) continue;
-                    String title = card.optString("title");
-                    String normalized = card.optString("normalized_title");
-                    if (title.contains(key) || normalized.contains(key)) {
-                        list.add(parseCard(card));
+                    String id = card.optString("id");
+                    if (TextUtils.isEmpty(id) || seenIds.contains(id)) continue;
+
+                    String title = card.optString("title", "");
+                    String normalized = card.optString("normalized_title", "");
+                    String titleLower = title.toLowerCase();
+                    String normLower = normalized.toLowerCase();
+
+                    boolean exact = title.equals(key) || normalized.equals(key)
+                            || titleLower.equals(keyLower) || normLower.equals(keyLower);
+                    boolean fuzzy = title.contains(key) || normalized.contains(key)
+                            || titleLower.contains(keyLower) || normLower.contains(keyLower);
+
+                    if (exact) {
+                        seenIds.add(id);
+                        exactMatches.add(parseCard(card));
+                    } else if (fuzzy) {
+                        seenIds.add(id);
+                        fuzzyMatches.add(parseCard(card));
                     }
                 }
             }
-        } catch (Exception ignored) {}
-        return Result.string(list);
+
+            // 精确匹配在前，模糊匹配在后
+            list.addAll(exactMatches);
+            list.addAll(fuzzyMatches);
+
+            // 分页返回（TVBox searchContent 的 pg 是客户端分页）
+            int pageNum = Integer.parseInt(pg);
+            int pageSize = 20;
+            int fromIdx = (pageNum - 1) * pageSize;
+            int toIdx = Math.min(fromIdx + pageSize, list.size());
+            if (fromIdx >= list.size()) {
+                return Result.string(new ArrayList<>());
+            }
+            ArrayList<Vod> pageResult = new ArrayList<>(list.subList(fromIdx, toIdx));
+            return Result.string(pageResult);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.string(list);
+        }
     }
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
         try {
-            // id 现在是真实 CDN 的 m3u8 (cdm.vvvip-plays33.cc / hn.bfvvs.com / ...)
-            // 直接透传，播放器自己 follow redirect + 拉分片
             Map<String, String> headers = new HashMap<>();
             headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
             headers.put("Accept", "*/*");
@@ -270,18 +434,81 @@ public class Dongpian extends Spider {
         }
     }
 
-    // ==================== 网络 + 签名 ====================
+    // ==================== Provider 选择 + URL 填充 ====================
 
-    /**
-     * 执行 GET /v1/* 请求（自动带签名）
-     */
+    /** 从 line_options 里选 top-N 不同 provider（跳过 resolve:// 付费线路） */
+    private ArrayList<Provider> pickTopProviders(JSONArray lineOptions, int topN) {
+        ArrayList<Provider> result = new ArrayList<>();
+        if (lineOptions == null) return result;
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < lineOptions.length(); i++) {
+            JSONObject line = lineOptions.optJSONObject(i);
+            if (line == null) continue;
+            String url = line.optString("url", "");
+            // 跳过付费/需二次 resolve 的线路
+            if (url.startsWith("resolve://")) continue;
+            String pid = line.optString("provider_id");
+            if (TextUtils.isEmpty(pid) || seen.contains(pid)) continue;
+            seen.add(pid);
+            String label = line.optString("display_label");
+            if (TextUtils.isEmpty(label)) label = line.optString("label");
+            if (TextUtils.isEmpty(label)) label = pid;
+            result.add(new Provider(pid, label, line.optString("play_from", ""), line.optInt("score", 0)));
+            if (result.size() >= topN) break;
+        }
+        return result;
+    }
+
+    /** 根据一集的 line_options，填充到 providerUrls[providerId][epIdx] */
+    private void fillEpisodeUrls(Map<String, ArrayList<String>> providerUrls,
+                                  ArrayList<Provider> providers,
+                                  JSONArray lineOptions,
+                                  int epIdx) {
+        if (lineOptions == null) return;
+        // 建 pid → Provider 快速查找
+        Map<String, Provider> pidMap = new HashMap<>();
+        for (Provider p : providers) pidMap.put(p.id, p);
+
+        for (int i = 0; i < lineOptions.length(); i++) {
+            JSONObject line = lineOptions.optJSONObject(i);
+            if (line == null) continue;
+            String pid = line.optString("provider_id");
+            Provider p = pidMap.get(pid);
+            if (p == null) continue;
+            String url = line.optString("url", "");
+            if (TextUtils.isEmpty(url) || url.startsWith("resolve://")) continue;
+
+            ArrayList<String> slot = providerUrls.get(pid);
+            if (slot != null && epIdx >= 0 && epIdx < slot.size()) {
+                if (TextUtils.isEmpty(slot.get(epIdx))) {
+                    slot.set(epIdx, url);
+                }
+            }
+        }
+    }
+
+    /** Provider 内部数据类 */
+    private static class Provider {
+        final String id;
+        final String label;
+        final String playFrom;
+        final int score;
+
+        Provider(String id, String label, String playFrom, int score) {
+            this.id = id;
+            this.label = label;
+            this.playFrom = playFrom;
+            this.score = score;
+        }
+    }
+
+    // ==================== 网络 + HMAC 签名 ====================
+
     private String get(String url) throws Exception {
         return request("GET", url, null);
     }
 
-    /**
-     * 执行无签名的 GET 请求（第三方域名，如 player.baipiaozhe.com）
-     */
+    /** 无签名 GET（baipiaozhe resolve / CDN） */
     private String getPlain(String url) throws Exception {
         Request req = new Request.Builder()
                 .url(url)
@@ -289,57 +516,48 @@ public class Dongpian extends Spider {
                 .header("Accept", "application/json")
                 .header("Referer", "https://player.baipiaozhe.com/yjplayer.html")
                 .build();
-        Response resp = plainClient.newCall(req).execute();
-        return resp.body() == null ? "" : resp.body().string();
-    }
-
-    /**
-     * 执行 POST /v1/* 请求（自动带签名 + JSON body）
-     */
-    private String post(String url, JSONObject body) throws Exception {
-        return request("POST", url, body.toString());
+        try (Response resp = plainClient.newCall(req).execute()) {
+            return resp.body() == null ? "" : resp.body().string();
+        }
     }
 
     private String request(String method, String urlStr, String jsonBody) throws Exception {
         java.net.URL u = new java.net.URL(urlStr);
-        // 签名字符串：METHOD\npathname?query\ntimestamp\nnonce
         String pathWithQuery = u.getPath();
         if (!TextUtils.isEmpty(u.getQuery())) pathWithQuery += "?" + u.getQuery();
+
         long ts = System.currentTimeMillis();
         String nonce = randomHex(16);
         String payload = method + "\n" + pathWithQuery + "\n" + ts + "\n" + nonce;
         String signature = hmacSha256Hex(SIGN_SECRET, payload);
 
         Request.Builder builder = new Request.Builder().url(urlStr);
-        // 基础 UA
         builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36");
         builder.header("Accept", "application/json");
         builder.header("Referer", SITE + "/");
-        // 客户端标识
         for (Map.Entry<String, String> e : CLIENT_HEADERS.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
-        // 签名
         builder.header("x-ai-movie-timestamp", String.valueOf(ts));
         builder.header("x-ai-movie-nonce", nonce);
         builder.header("x-ai-movie-signature", signature);
 
         if ("POST".equals(method)) {
-            // OkHttp 3.x 签名: create(MediaType, String) — 注意参数顺序
-            RequestBody rb = RequestBody.create(MediaType.parse("application/json; charset=utf-8"), jsonBody == null ? "" : jsonBody);
+            RequestBody rb = RequestBody.create(
+                    MediaType.parse("application/json; charset=utf-8"),
+                    jsonBody == null ? "" : jsonBody);
             builder.post(rb);
         }
 
-        Response resp = client.newCall(builder.build()).execute();
-        if (!resp.isSuccessful() && resp.body() != null) {
-            // 失败时打印一下便于调试
-            String body = resp.body().string();
-            throw new Exception("HTTP " + resp.code() + " " + resp.message() + " body=" + body);
+        try (Response resp = client.newCall(builder.build()).execute()) {
+            if (!resp.isSuccessful() && resp.body() != null) {
+                String body = resp.body().string();
+                throw new Exception("HTTP " + resp.code() + " " + resp.message() + " body=" + body);
+            }
+            return resp.body() == null ? "" : resp.body().string();
         }
-        return resp.body() == null ? "" : resp.body().string();
     }
 
-    /** HMAC-SHA256 → hex */
     private static String hmacSha256Hex(String key, String data) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -366,11 +584,9 @@ public class Dongpian extends Spider {
         String remarks = c.optString("remarks");
         Vod vod = new Vod(id, title, pic, remarks);
 
-        // content_kind 用来映射分类名
         String kind = c.optString("content_kind", "");
         if (!TextUtils.isEmpty(kind)) vod.setTypeName(kind);
 
-        // year / area
         if (c.has("year")) vod.setVodYear(String.valueOf(c.optInt("year")));
         if (c.has("area")) vod.setVodArea(c.optString("area"));
         return vod;
