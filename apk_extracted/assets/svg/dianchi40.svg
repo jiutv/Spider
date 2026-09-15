@@ -1,0 +1,8 @@
+<svg width="120" height="60" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+    <!-- 电池外框（白色细边框） -->
+    <rect x="10" y="10" width="90" height="40" rx="6" ry="6" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <!-- 电池正极凸起 -->
+    <rect x="100" y="20" width="5" height="20" rx="2" ry="2" fill="#FFFFFF"/>
+    <!-- 内部40%填充黄色（右侧60%空白） -->
+    <rect x="12" y="12" width="34.4" height="36" rx="4" ry="4" fill="#FFFF00"/>
+</svg>

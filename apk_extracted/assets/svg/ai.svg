@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 定义渐变 -->
+  <defs>
+    <linearGradient id="multiColorGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4285f4;stop-opacity:1" />
+      <stop offset="33%" style="stop-color:#ea4335;stop-opacity:1" />
+      <stop offset="66%" style="stop-color:#fbbc05;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#34a853;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 透明背景 -->
+  <rect width="512" height="512" fill="transparent"/>
+  
+  <!-- AI 字母，使用水平多色渐变 -->
+  <text x="256" y="440" 
+        font-family="Arial Rounded MT Bold, Verdana, sans-serif" 
+        font-size="520" 
+        font-weight="bold"
+        text-anchor="middle" 
+        fill="url(#multiColorGradient)"
+        textLength="480"
+        lengthAdjust="spacingAndGlyphs">
+    AI
+  </text>
+</svg>
