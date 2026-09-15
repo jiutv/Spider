@@ -24,23 +24,24 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * 云帧享 / 秒播影视 (baiyunvideo)
+ * 云帧享 / 秒播影视 (baiyunvideo) — App v2.8.0
  *
  * 修复点:
- * 1. key_api (tangsan.fun) 已死 → 硬编码 AES-256 key: qvn1u7FCfu8uaolp980i8uVHVS8Dxih7 (来自 APK libkeys.so)
- * 2. AES-GCM doFinal 必须传 ciphertext+tag → 原版只传密文, 解密失败
- * 3. /cache/zhaopian/ 已恢复, 返回纯数组结构, 与原版 buildList 兼容
+ * 1. AES-256 key 已更新: qvn1u7FCfu8uao9oi80i8uVHVS8Dxih7 (来自最新 APK libkeys.so)
+ * 2. AES-GCM doFinal 必须传 ciphertext+tag (128-bit), 原版只传密文导致解密失败
+ * 3. 解密后 JSON 尾部有垃圾数据, 需截断到最后一个 '}' 后再解析
+ * 4. /cache/zhaopian/ 返回纯数组结构, 与 buildList 兼容
  *
  * 分类结构对齐 App 底部 Tab (channels): 剧集 / 电影 / 综艺 / 动漫 / 少儿 / 纪录片
  */
 public class YunZhenXiang extends Spider {
 
-    /** 硬编码 AES-256 key, 来自 APK libkeys.so */
-    private static final String AES_KEY = "qvn1u7FCfu8uaolp980i8uVHVS8Dxih7";
+    /** 硬编码 AES-256 key, 来自最新 APK libkeys.so (2026-09-16 更新) */
+    private static final String AES_KEY = "qvn1u7FCfu8uao9oi80i8uVHVS8Dxih7";
 
     private String textURL = "";
     private String resourceURL = "";
-    private String version = "1.0.0";
+    private String version = "2.8.0";
     private String aesKey = "";
     private final Map<String, String> headers = new HashMap<>();
     private boolean initialized = false;
@@ -50,19 +51,26 @@ public class YunZhenXiang extends Spider {
      * AES-256-GCM 解密
      * base64 → nonce(12) + ciphertext + authTag(16)
      * Java AES/GCM/NoPadding: 把 ciphertext+tag 一起传给 doFinal()
+     *
+     * 注意: 服务端返回的密文解密后, JSON 尾部可能有垃圾数据 (padding 或额外字节),
+     * 需截断到最后一个 '}' 位置才能被 JSONObject 正确解析.
      */
     private String decrypt(String str) {
         try {
             if (aesKey == null || aesKey.isEmpty()) aesKey = AES_KEY;
             byte[] data = Base64.decode(str.trim(), 0);
             byte[] nonce = Arrays.copyOfRange(data, 0, 12);
-            // 关键修复: doFinal 必须传 ciphertext + tag (最后16字节), 原版只传密文导致解密失败
+            // doFinal 必须传 ciphertext + tag (最后16字节)
             byte[] ciphertextWithTag = Arrays.copyOfRange(data, 12, data.length);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE,
                     new SecretKeySpec(aesKey.getBytes("UTF-8"), "AES"),
                     new GCMParameterSpec(128, nonce));
-            return new String(cipher.doFinal(ciphertextWithTag), "UTF-8");
+            String plain = new String(cipher.doFinal(ciphertextWithTag), "UTF-8");
+            // 截断到最后一个 '}' — 服务端密文末尾带 padding 垃圾数据
+            int end = plain.lastIndexOf('}');
+            if (end >= 0) return plain.substring(0, end + 1);
+            return plain;
         } catch (Exception e) {
             return "";
         }
